@@ -211,19 +211,16 @@ export default function App() {
         ? [{ inline_data: { mime_type: "application/pdf", data: payload.data } }, { text: payload.prompt }]
         : [{ text: payload.content }];
       const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 16384, temperature: 0, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } } }) }
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 16384, temperature: 0, responseMimeType: "application/json" } }) }
       );
       const geminiData = await geminiRes.json();
       if (geminiData.error) throw new Error(geminiData.error.message);
       const aiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
       if (!aiText) throw new Error("IA retornou resposta vazia");
       let parsed;
-      try {
-        const clean = aiText.replace(/```json|```/gi, "").trim();
-        const match = clean.match(/\{[\s\S]*\}/);
-        parsed = JSON.parse(match ? match[0] : clean);
-      } catch(e) { throw new Error("JSON inválido da IA: " + aiText.substring(0, 200)); }
+      try { parsed = JSON.parse(aiText.trim()); }
+      catch(e) { throw new Error("JSON inválido: " + aiText.substring(0, 400)); }
       const rawTxs = (parsed.transactions || []).filter(t => t.date && t.gross_amount !== undefined);
       if (rawTxs.length === 0) throw new Error("Nenhuma transação encontrada no arquivo");
       const calculated = calcForSave(rawTxs, config);
