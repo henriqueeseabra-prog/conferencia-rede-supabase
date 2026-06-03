@@ -212,16 +212,18 @@ export default function App() {
         : [{ text: payload.content }];
       const geminiRes = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 8192, temperature: 0, thinkingConfig: { thinkingBudget: 0 } } }) }
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 16384, temperature: 0, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } } }) }
       );
       const geminiData = await geminiRes.json();
       if (geminiData.error) throw new Error(geminiData.error.message);
       const aiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      const match = aiText.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("IA não retornou JSON. Resposta: " + aiText.substring(0, 200));
+      if (!aiText) throw new Error("IA retornou resposta vazia");
       let parsed;
-      try { parsed = JSON.parse(match[0]); }
-      catch(e) { throw new Error("JSON inválido da IA: " + match[0].substring(0, 200)); }
+      try {
+        const clean = aiText.replace(/```json|```/gi, "").trim();
+        const match = clean.match(/\{[\s\S]*\}/);
+        parsed = JSON.parse(match ? match[0] : clean);
+      } catch(e) { throw new Error("JSON inválido da IA: " + aiText.substring(0, 200)); }
       const rawTxs = (parsed.transactions || []).filter(t => t.date && t.gross_amount !== undefined);
       if (rawTxs.length === 0) throw new Error("Nenhuma transação encontrada no arquivo");
       const calculated = calcForSave(rawTxs, config);
