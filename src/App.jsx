@@ -5,6 +5,7 @@ import Auth from "./Auth.jsx";
 
 // ─── Config (salvo no localStorage) ───────────────────────────────────────
 const DEFAULT_CONFIG = {
+  pix:                { label:"Pix",                prazo:0,  taxa:0,    cor:"#2DD4BF", bg:"#042A26" },
   visa_debito:        { label:"Visa Débito",        prazo:1,  taxa:1.69, cor:"#60A5FA", bg:"#0A1E3D" },
   visa_credito:       { label:"Visa Crédito",       prazo:30, taxa:2.69, cor:"#93C5FD", bg:"#0F2442" },
   mastercard_debito:  { label:"Master Débito",      prazo:1,  taxa:1.69, cor:"#EF4444", bg:"#2A0808" },
@@ -86,7 +87,7 @@ function calcForSave(rawTxs, config) {
       gross_amount: Number(tx.gross_amount),
       net_amount: Number(tx.gross_amount) * (1 - taxaNum / 100),
       taxa_pct: taxaNum, prazo_dias: prazoNum,
-      settlement_date: addDays(tx.date, prazoNum),
+      settlement_date: prazoNum === 0 ? tx.date : addDays(tx.date, prazoNum),
       card_brand: tx.card_brand || null, nsu: tx.nsu || null,
     };
   });
@@ -103,6 +104,7 @@ Responda APENAS com JSON válido — sem markdown, sem texto extra, sem explica�
 Formato:
 {"transactions":[{"date":"YYYY-MM-DD","description":"string","type":"TIPO","gross_amount":número,"card_brand":"string ou null","nsu":"string ou null"}]}
 Tipos permitidos:
+- pix = pagamento via Pix
 - visa_debito = Visa débito
 - visa_credito = Visa crédito à vista
 - mastercard_debito = Mastercard débito
