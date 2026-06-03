@@ -111,17 +111,22 @@ export default function App() {
         payload = { type: "text", content: `${PARSE_PROMPT}\n\nConteúdo:\n${txt}` };
       }
       setImportMsg("IA classificando transações…");
-      const res = await fetch("/api/parse", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
-      const rawResponse = await res.text();
-      let data;
-      try { data = JSON.parse(rawResponse); }
-      catch(e) { throw new Error("Servidor retornou: " + rawResponse.substring(0, 300)); }
-      if (data.error) throw new Error(data.error);
-      const match = data.text.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("Resposta da IA: " + data.text?.substring(0, 300));
+      const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const parts = payload.type === "pdf"
+        ? [{ inline_data: { mime_type: "application/pdf", data: payload.data } }, { text: payload.prompt }]
+        : [{ text: payload.content }];
+      const geminiRes = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+        { method: "POST", headers: { "Content-Type": "application/json", "X-goog-api-key": geminiKey }, body: JSON.stringify({ contents: [{ parts }] }) }
+      );
+      const geminiData = await geminiRes.json();
+      if (geminiData.error) throw new Error(geminiData.error.message);
+      const aiText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const match = aiText.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("IA não retornou JSON. Resposta: " + aiText.substring(0, 200));
       let parsed;
       try { parsed = JSON.parse(match[0]); }
-      catch(e) { throw new Error("JSON inválido: " + match[0].substring(0, 300)); }
+      catch(e) { throw new Error("JSON inválido da IA: " + match[0].substring(0, 200)); }
       const rawTxs = (parsed.transactions || []).filter(t => t.date && t.gross_amount !== undefined);
       if (rawTxs.length === 0) throw new Error("Nenhuma transação encontrada no arquivo");
       const calculated = calcForSave(rawTxs, config);
