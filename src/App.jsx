@@ -21,7 +21,47 @@ const DEFAULT_CONFIG = {
 const loadConfig = () => { try { return JSON.parse(localStorage.getItem("rede_config")) || DEFAULT_CONFIG; } catch { return DEFAULT_CONFIG; } };
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
-const addDays = (s, n) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().split("T")[0]; };
+function easterDate(year) {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+const holidayCache = {};
+function getBrazilianHolidays(year) {
+  if (holidayCache[year]) return holidayCache[year];
+  const e = easterDate(year);
+  const shift = (date, days) => { const d = new Date(date); d.setDate(d.getDate() + days); return d.toISOString().split("T")[0]; };
+  const s = (m, d) => `${year}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const set = new Set([
+    s(1,1), s(4,21), s(5,1), s(9,7), s(10,12), s(11,2), s(11,15), s(11,20), s(12,25),
+    shift(e,-48), shift(e,-47), shift(e,-2), e.toISOString().split("T")[0], shift(e,60),
+  ]);
+  return (holidayCache[year] = set);
+}
+
+function nextBusinessDay(dateStr) {
+  let d = dateStr;
+  while (true) {
+    const dt = new Date(d + "T12:00:00");
+    const dow = dt.getDay();
+    if (dow !== 0 && dow !== 6 && !getBrazilianHolidays(dt.getFullYear()).has(d)) break;
+    dt.setDate(dt.getDate() + 1);
+    d = dt.toISOString().split("T")[0];
+  }
+  return d;
+}
+
+const addDays = (s, n) => {
+  const d = new Date(s + "T12:00:00");
+  d.setDate(d.getDate() + n);
+  return nextBusinessDay(d.toISOString().split("T")[0]);
+};
 const R  = (v) => new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" }).format(v ?? 0);
 const D  = (s) => s ? s.split("-").reverse().join("/") : "—";
 const Dt = (s) => s ? new Date(s).toLocaleDateString("pt-BR") : "—";
