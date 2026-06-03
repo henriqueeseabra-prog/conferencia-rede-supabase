@@ -197,7 +197,7 @@ export default function App() {
         body: JSON.stringify({
           contents: [{ parts: [{ text }] }],
           generationConfig: {
-            maxOutputTokens: 8192,
+            maxOutputTokens: 32768,
             temperature: 0,
             responseMimeType: "application/json",
             responseSchema: RESPONSE_SCHEMA,
@@ -249,7 +249,7 @@ export default function App() {
         }
         const header  = lines[0];
         const data    = lines.slice(1).filter(l => l.trim());
-        const CHUNK   = 50;
+        const CHUNK   = 30;
         const chunks  = [];
         for (let i = 0; i < data.length; i += CHUNK)
           chunks.push([header, ...data.slice(i, i + CHUNK)].join("\n"));
