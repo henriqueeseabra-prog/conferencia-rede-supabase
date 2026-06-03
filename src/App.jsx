@@ -112,7 +112,10 @@ export default function App() {
       }
       setImportMsg("IA classificando transações…");
       const res = await fetch("/api/parse", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
-      const data = await res.json();
+      const rawResponse = await res.text();
+      let data;
+      try { data = JSON.parse(rawResponse); }
+      catch(e) { throw new Error("Servidor retornou: " + rawResponse.substring(0, 300)); }
       if (data.error) throw new Error(data.error);
       const match = data.text.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("Resposta da IA: " + data.text?.substring(0, 300));
