@@ -116,8 +116,8 @@ export default function App() {
         ? [{ inline_data: { mime_type: "application/pdf", data: payload.data } }, { text: payload.prompt }]
         : [{ text: payload.content }];
       const geminiRes = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
-        { method: "POST", headers: { "Content-Type": "application/json", "X-goog-api-key": geminiKey }, body: JSON.stringify({ contents: [{ parts }] }) }
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }] }) }
       );
       const geminiData = await geminiRes.json();
       if (geminiData.error) throw new Error(geminiData.error.message);
