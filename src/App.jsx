@@ -20,7 +20,15 @@ const DEFAULT_CONFIG = {
   debito:             { label:"Outros Débito",      prazo:1,  taxa:1.69, cor:"#94A3B8", bg:"#1A2535" },
   credito_vista:      { label:"Outros Crédito",     prazo:30, taxa:2.69, cor:"#CBD5E1", bg:"#1A2535" },
 };
-const loadConfig = () => { try { return JSON.parse(localStorage.getItem("rede_config")) || DEFAULT_CONFIG; } catch { return DEFAULT_CONFIG; } };
+const loadConfig = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem("rede_config")) || {};
+    // mescla: DEFAULT_CONFIG como base, valores salvos sobrescrevem
+    const merged = { ...DEFAULT_CONFIG };
+    Object.keys(saved).forEach(k => { if (merged[k]) merged[k] = { ...merged[k], ...saved[k] }; });
+    return merged;
+  } catch { return DEFAULT_CONFIG; }
+};
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 function easterDate(year) {
