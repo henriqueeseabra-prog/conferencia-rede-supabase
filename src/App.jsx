@@ -98,27 +98,31 @@ const toBase64 = (f) => new Promise((res, rej) => { const r = new FileReader(); 
 const toBuffer = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsArrayBuffer(f); });
 const toText   = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsText(f, "UTF-8"); });
 
-const PARSE_PROMPT = `Você é um especialista em extratos de maquininha de cartão e vouchers brasileiros (Rede/Redecard).
-Analise o extrato e extraia TODAS as transações.
-Responda APENAS com JSON válido — sem markdown, sem texto extra, sem explicações.
-Formato:
-{"transactions":[{"date":"YYYY-MM-DD","description":"string","type":"TIPO","gross_amount":número,"card_brand":"string ou null","nsu":"string ou null"}]}
-Tipos permitidos:
-- pix = pagamento via Pix
-- visa_debito = Visa débito
-- visa_credito = Visa crédito à vista
-- mastercard_debito = Mastercard débito
-- mastercard_credito = Mastercard crédito à vista
-- elo_debito = Elo débito
-- elo_credito = Elo crédito à vista
-- elo_voucher = Elo voucher/benefício
-- amex_credito = American Express crédito
-- alelo = voucher Alelo
-- ticket = voucher Ticket
-- vr = voucher VR
-- pluxee = voucher Pluxee (antigo Sodexo)
-- desconhecido = não conseguiu identificar a bandeira/modalidade
-Regras: identifique a bandeira pelo nome no extrato. Use "desconhecido" apenas se realmente não conseguir classificar. Estornos=gross_amount negativo. Ignore cabeçalhos e totais.`;
+const PARSE_PROMPT = `Extraia todas as transações financeiras do extrato abaixo.
+Tipos aceitos para o campo type: pix, visa_debito, visa_credito, mastercard_debito, mastercard_credito, elo_debito, elo_credito, elo_voucher, amex_credito, alelo, ticket, vr, pluxee, desconhecido.
+Regras: date no formato YYYY-MM-DD. gross_amount como número (negativo para estornos). Ignore linhas de cabeçalho e totais. Use "desconhecido" só se não conseguir identificar.`;
+
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    transactions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          date:         { type: "string" },
+          description:  { type: "string" },
+          type:         { type: "string" },
+          gross_amount: { type: "number" },
+          card_brand:   { type: "string" },
+          nsu:          { type: "string" },
+        },
+        required: ["date", "type", "gross_amount"],
+      },
+    },
+  },
+  required: ["transactions"],
+};
 
 // ─── App ───────────────────────────────────────────────────────────────────
 export default function App() {
@@ -190,14 +194,21 @@ export default function App() {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
       { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text }] }], generationConfig: { maxOutputTokens: 16384, temperature: 0 } }) }
+        body: JSON.stringify({
+          contents: [{ parts: [{ text }] }],
+          generationConfig: {
+            maxOutputTokens: 8192,
+            temperature: 0,
+            responseMimeType: "application/json",
+            responseSchema: RESPONSE_SCHEMA,
+          },
+        }) }
     );
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
     const aiText = (data.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("");
     if (!aiText) throw new Error("IA retornou resposta vazia no bloco " + idx);
-    const m = aiText.match(/\{[\s\S]*\}/);
-    try { return JSON.parse(m?.[0] ?? aiText.trim()); }
+    try { return JSON.parse(aiText.trim()); }
     catch { throw new Error("JSON inválido no bloco " + idx + ". Fim: …" + aiText.substring(aiText.length - 200)); }
   }
 
@@ -238,7 +249,7 @@ export default function App() {
         }
         const header  = lines[0];
         const data    = lines.slice(1).filter(l => l.trim());
-        const CHUNK   = 150;
+        const CHUNK   = 50;
         const chunks  = [];
         for (let i = 0; i < data.length; i += CHUNK)
           chunks.push([header, ...data.slice(i, i + CHUNK)].join("\n"));
