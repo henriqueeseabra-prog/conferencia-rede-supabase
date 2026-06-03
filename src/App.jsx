@@ -30,12 +30,14 @@ function calcForSave(rawTxs, config) {
   return rawTxs.map(tx => {
     const key = config[tx.type] ? tx.type : "debito";
     const { prazo, taxa } = config[key];
+    const taxaNum  = parseFloat(taxa)  || 0;
+    const prazoNum = parseInt(prazo)   || 0;
     return {
       date: tx.date, description: tx.description || null,
       type: tx.type, gross_amount: Number(tx.gross_amount),
-      net_amount: Number(tx.gross_amount) * (1 - taxa / 100),
-      taxa_pct: taxa, prazo_dias: prazo,
-      settlement_date: addDays(tx.date, prazo),
+      net_amount: Number(tx.gross_amount) * (1 - taxaNum / 100),
+      taxa_pct: taxaNum, prazo_dias: prazoNum,
+      settlement_date: addDays(tx.date, prazoNum),
       card_brand: tx.card_brand || null, nsu: tx.nsu || null,
     };
   });
@@ -184,7 +186,7 @@ export default function App() {
   };
 
   const updateCfg = (k, field, v) => {
-    const nc = { ...config, [k]: { ...config[k], [field]: parseFloat(v) || 0 } };
+    const nc = { ...config, [k]: { ...config[k], [field]: v } };
     setConfig(nc); localStorage.setItem("rede_config", JSON.stringify(nc));
   };
 
