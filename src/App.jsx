@@ -249,12 +249,19 @@ export default function App() {
         }
         const header  = lines[0];
         const data    = lines.slice(1).filter(l => l.trim());
-        const CHUNK   = 30;
+        const CHUNK   = 100;
         const chunks  = [];
         for (let i = 0; i < data.length; i += CHUNK)
           chunks.push([header, ...data.slice(i, i + CHUNK)].join("\n"));
 
         for (let i = 0; i < chunks.length; i++) {
+          if (i > 0) {
+            // pausa entre chamadas para respeitar limite de 20 req/min
+            for (let s = 4; s > 0; s--) {
+              setImportMsg(`Aguardando limite da API… ${s}s (bloco ${i} de ${chunks.length})`);
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          }
           const parsed = await callGemini(`${PARSE_PROMPT}\n\nConteúdo:\n${chunks[i]}`, geminiKey, i + 1, chunks.length);
           rawTxs.push(...(parsed.transactions || []));
         }
