@@ -11,6 +11,8 @@ const DEFAULT_CONFIG = {
   mastercard_credito: { label:"Master Crédito",     prazo:30, taxa:2.69, cor:"#FCA5A5", bg:"#2A1010" },
   elo_debito:         { label:"Elo Débito",         prazo:1,  taxa:1.69, cor:"#F59E0B", bg:"#2A1A06" },
   elo_credito:        { label:"Elo Crédito",        prazo:30, taxa:2.69, cor:"#FCD34D", bg:"#2A2006" },
+  elo_voucher:        { label:"Elo Voucher",        prazo:1,  taxa:1.80, cor:"#FB923C", bg:"#2A1206" },
+  amex_credito:       { label:"Amex Crédito",       prazo:30, taxa:2.69, cor:"#67E8F9", bg:"#062A2A" },
   alelo:              { label:"Alelo",              prazo:1,  taxa:1.80, cor:"#34D399", bg:"#052E1A" },
   ticket:             { label:"Ticket",             prazo:1,  taxa:1.80, cor:"#F97316", bg:"#2A1006" },
   vr:                 { label:"VR",                 prazo:1,  taxa:1.80, cor:"#A78BFA", bg:"#1E1244" },
@@ -100,6 +102,8 @@ Tipos permitidos:
 - mastercard_credito = Mastercard crédito à vista
 - elo_debito = Elo débito
 - elo_credito = Elo crédito à vista
+- elo_voucher = Elo voucher/benefício
+- amex_credito = American Express crédito
 - alelo = voucher Alelo
 - ticket = voucher Ticket
 - vr = voucher VR
