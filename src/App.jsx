@@ -185,48 +185,71 @@ export default function App() {
     setTab("previsao");
   }
 
+  async function callGemini(text, geminiKey, idx, total) {
+    if (idx !== undefined) setImportMsg(`IA classificando bloco ${idx} de ${total}…`);
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
+      { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text }] }], generationConfig: { maxOutputTokens: 16384, temperature: 0 } }) }
+    );
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    const aiText = (data.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("");
+    if (!aiText) throw new Error("IA retornou resposta vazia no bloco " + idx);
+    const m = aiText.match(/\{[\s\S]*\}/);
+    try { return JSON.parse(m?.[0] ?? aiText.trim()); }
+    catch { throw new Error("JSON inválido no bloco " + idx + ". Fim: …" + aiText.substring(aiText.length - 200)); }
+  }
+
   const parseFile = useCallback(async (file) => {
     setImporting(true); setError(null);
     const ext = file.name.split(".").pop().toLowerCase();
+    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
     try {
-      let payload;
+      let rawTxs = [];
       setImportMsg("Lendo arquivo…");
+
       if (ext === "pdf") {
         setImportMsg("Enviando PDF para IA…");
         const b64 = await toBase64(file);
-        payload = { type: "pdf", data: b64, prompt: PARSE_PROMPT };
-      } else if (["xlsx","xls"].includes(ext)) {
-        setImportMsg("Convertendo planilha…");
-        const ab = await toBuffer(file);
-        const wb = XLSX.read(ab, { type:"array" });
-        const csv = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);
-        payload = { type: "text", content: `${PARSE_PROMPT}\n\nConteúdo:\n${csv}` };
+        const parts = [{ inline_data: { mime_type: "application/pdf", data: b64 } }, { text: PARSE_PROMPT }];
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
+          { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 16384, temperature: 0 } }) }
+        );
+        const data = await res.json();
+        if (data.error) throw new Error(data.error.message);
+        const aiText = (data.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("");
+        const m = aiText.match(/\{[\s\S]*\}/);
+        try { rawTxs = (JSON.parse(m?.[0] ?? aiText.trim()).transactions || []); }
+        catch { throw new Error("JSON inválido do PDF. Fim: …" + aiText.substring(aiText.length - 200)); }
+
       } else {
-        const txt = await toText(file);
-        payload = { type: "text", content: `${PARSE_PROMPT}\n\nConteúdo:\n${txt}` };
+        // texto / planilha — divide em blocos de 150 linhas
+        let lines;
+        if (["xlsx","xls"].includes(ext)) {
+          setImportMsg("Convertendo planilha…");
+          const ab = await toBuffer(file);
+          const wb = XLSX.read(ab, { type:"array" });
+          lines = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]).split("\n");
+        } else {
+          lines = (await toText(file)).split("\n");
+        }
+        const header  = lines[0];
+        const data    = lines.slice(1).filter(l => l.trim());
+        const CHUNK   = 150;
+        const chunks  = [];
+        for (let i = 0; i < data.length; i += CHUNK)
+          chunks.push([header, ...data.slice(i, i + CHUNK)].join("\n"));
+
+        for (let i = 0; i < chunks.length; i++) {
+          const parsed = await callGemini(`${PARSE_PROMPT}\n\nConteúdo:\n${chunks[i]}`, geminiKey, i + 1, chunks.length);
+          rawTxs.push(...(parsed.transactions || []));
+        }
       }
-      setImportMsg("IA classificando transações…");
-      const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const parts = payload.type === "pdf"
-        ? [{ inline_data: { mime_type: "application/pdf", data: payload.data } }, { text: payload.prompt }]
-        : [{ text: payload.content }];
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 16384, temperature: 0 } }) }
-      );
-      const geminiData = await geminiRes.json();
-      if (geminiData.error) throw new Error(geminiData.error.message);
-      // ignora partes de "thinking" (thought: true) e usa só o texto da resposta
-      const aiText = (geminiData.candidates?.[0]?.content?.parts || [])
-        .filter(p => !p.thought)
-        .map(p => p.text || "")
-        .join("");
-      if (!aiText) throw new Error("IA retornou resposta vazia");
-      let parsed;
-      const m = aiText.match(/\{[\s\S]*\}/);
-      try { parsed = JSON.parse(m?.[0] ?? aiText.trim()); }
-      catch { throw new Error("JSON inválido (" + aiText.length + " chars). Fim: …" + aiText.substring(aiText.length - 300)); }
-      const rawTxs = (parsed.transactions || []).filter(t => t.date && t.gross_amount !== undefined);
+
+      rawTxs = rawTxs.filter(t => t.date && t.gross_amount !== undefined);
       if (rawTxs.length === 0) throw new Error("Nenhuma transação encontrada no arquivo");
       const calculated = calcForSave(rawTxs, config);
       const hasUnknown = calculated.some(t => t.type === "desconhecido");
