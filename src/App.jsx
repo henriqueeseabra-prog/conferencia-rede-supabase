@@ -212,7 +212,7 @@ export default function App() {
         : [{ text: payload.content }];
       const geminiRes = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 8192, temperature: 0 } }) }
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 8192, temperature: 0, thinkingConfig: { thinkingBudget: 0 } } }) }
       );
       const geminiData = await geminiRes.json();
       if (geminiData.error) throw new Error(geminiData.error.message);
