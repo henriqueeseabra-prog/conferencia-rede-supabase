@@ -5,11 +5,18 @@ import Auth from "./Auth.jsx";
 
 // ─── Config (salvo no localStorage) ───────────────────────────────────────
 const DEFAULT_CONFIG = {
-  debito:        { label:"Débito",        prazo:1,  taxa:1.69, cor:"#60A5FA", bg:"#0F2942" },
-  credito_vista: { label:"Créd. à Vista", prazo:30, taxa:2.69, cor:"#34D399", bg:"#052E1A" },
-  alelo:         { label:"Alelo",         prazo:1,  taxa:1.80, cor:"#FCD34D", bg:"#2A1F06" },
-  ticket:        { label:"Ticket",        prazo:1,  taxa:1.80, cor:"#F97316", bg:"#2A1006" },
-  vr:            { label:"VR",            prazo:1,  taxa:1.80, cor:"#A78BFA", bg:"#1E1244" },
+  visa_debito:        { label:"Visa Débito",        prazo:1,  taxa:1.69, cor:"#60A5FA", bg:"#0A1E3D" },
+  visa_credito:       { label:"Visa Crédito",       prazo:30, taxa:2.69, cor:"#93C5FD", bg:"#0F2442" },
+  mastercard_debito:  { label:"Master Débito",      prazo:1,  taxa:1.69, cor:"#EF4444", bg:"#2A0808" },
+  mastercard_credito: { label:"Master Crédito",     prazo:30, taxa:2.69, cor:"#FCA5A5", bg:"#2A1010" },
+  elo_debito:         { label:"Elo Débito",         prazo:1,  taxa:1.69, cor:"#F59E0B", bg:"#2A1A06" },
+  elo_credito:        { label:"Elo Crédito",        prazo:30, taxa:2.69, cor:"#FCD34D", bg:"#2A2006" },
+  alelo:              { label:"Alelo",              prazo:1,  taxa:1.80, cor:"#34D399", bg:"#052E1A" },
+  ticket:             { label:"Ticket",             prazo:1,  taxa:1.80, cor:"#F97316", bg:"#2A1006" },
+  vr:                 { label:"VR",                 prazo:1,  taxa:1.80, cor:"#A78BFA", bg:"#1E1244" },
+  pluxee:             { label:"Pluxee",             prazo:1,  taxa:1.80, cor:"#C084FC", bg:"#1A0F2E" },
+  debito:             { label:"Outros Débito",      prazo:1,  taxa:1.69, cor:"#94A3B8", bg:"#1A2535" },
+  credito_vista:      { label:"Outros Crédito",     prazo:30, taxa:2.69, cor:"#CBD5E1", bg:"#1A2535" },
 };
 const loadConfig = () => { try { return JSON.parse(localStorage.getItem("rede_config")) || DEFAULT_CONFIG; } catch { return DEFAULT_CONFIG; } };
 
@@ -43,8 +50,21 @@ const PARSE_PROMPT = `Você é um especialista em extratos de maquininha de cart
 Analise o extrato e extraia TODAS as transações.
 Responda APENAS com JSON válido — sem markdown, sem texto extra, sem explicações.
 Formato:
-{"transactions":[{"date":"YYYY-MM-DD","description":"string","type":"debito|credito_vista|alelo|ticket|vr","gross_amount":número,"card_brand":"string ou null","nsu":"string ou null"}]}
-Regras: debito=cartão débito, credito_vista=crédito à vista, alelo/ticket/vr=vouchers respectivos. Estornos=gross_amount negativo. Ignore cabeçalhos e totais.`;
+{"transactions":[{"date":"YYYY-MM-DD","description":"string","type":"TIPO","gross_amount":número,"card_brand":"string ou null","nsu":"string ou null"}]}
+Tipos permitidos:
+- visa_debito = Visa débito
+- visa_credito = Visa crédito à vista
+- mastercard_debito = Mastercard débito
+- mastercard_credito = Mastercard crédito à vista
+- elo_debito = Elo débito
+- elo_credito = Elo crédito à vista
+- alelo = voucher Alelo
+- ticket = voucher Ticket
+- vr = voucher VR
+- pluxee = voucher Pluxee (antigo Sodexo)
+- debito = débito de bandeira desconhecida
+- credito_vista = crédito à vista de bandeira desconhecida
+Regras: identifique a bandeira pelo nome no extrato. Estornos=gross_amount negativo. Ignore cabeçalhos e totais.`;
 
 // ─── App ───────────────────────────────────────────────────────────────────
 export default function App() {
