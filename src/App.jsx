@@ -17,8 +17,6 @@ const DEFAULT_CONFIG = {
   ticket:             { label:"Ticket",             prazo:1,  taxa:1.80, cor:"#F97316", bg:"#2A1006" },
   vr:                 { label:"VR",                 prazo:1,  taxa:1.80, cor:"#A78BFA", bg:"#1E1244" },
   pluxee:             { label:"Pluxee",             prazo:1,  taxa:1.80, cor:"#C084FC", bg:"#1A0F2E" },
-  debito:             { label:"Outros Débito",      prazo:1,  taxa:1.69, cor:"#94A3B8", bg:"#1A2535" },
-  credito_vista:      { label:"Outros Crédito",     prazo:30, taxa:2.69, cor:"#CBD5E1", bg:"#1A2535" },
 };
 const loadConfig = () => {
   try {
@@ -78,13 +76,14 @@ const Dt = (s) => s ? new Date(s).toLocaleDateString("pt-BR") : "—";
 
 function calcForSave(rawTxs, config) {
   return rawTxs.map(tx => {
-    const key = config[tx.type] ? tx.type : "debito";
-    const { prazo, taxa } = config[key];
-    const taxaNum  = parseFloat(taxa)  || 0;
-    const prazoNum = parseInt(prazo)   || 0;
+    const unknown = !config[tx.type] || tx.type === "desconhecido";
+    const key = unknown ? null : tx.type;
+    const taxaNum  = key ? parseFloat(config[key].taxa) || 0 : 0;
+    const prazoNum = key ? parseInt(config[key].prazo)  || 1 : 1;
     return {
       date: tx.date, description: tx.description || null,
-      type: tx.type, gross_amount: Number(tx.gross_amount),
+      type: unknown ? "desconhecido" : tx.type,
+      gross_amount: Number(tx.gross_amount),
       net_amount: Number(tx.gross_amount) * (1 - taxaNum / 100),
       taxa_pct: taxaNum, prazo_dias: prazoNum,
       settlement_date: addDays(tx.date, prazoNum),
@@ -116,9 +115,8 @@ Tipos permitidos:
 - ticket = voucher Ticket
 - vr = voucher VR
 - pluxee = voucher Pluxee (antigo Sodexo)
-- debito = débito de bandeira desconhecida
-- credito_vista = crédito à vista de bandeira desconhecida
-Regras: identifique a bandeira pelo nome no extrato. Estornos=gross_amount negativo. Ignore cabeçalhos e totais.`;
+- desconhecido = não conseguiu identificar a bandeira/modalidade
+Regras: identifique a bandeira pelo nome no extrato. Use "desconhecido" apenas se realmente não conseguir classificar. Estornos=gross_amount negativo. Ignore cabeçalhos e totais.`;
 
 // ─── App ───────────────────────────────────────────────────────────────────
 export default function App() {
@@ -130,6 +128,7 @@ export default function App() {
   const [loading, setLoading]     = useState(true);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+  const [reviewing, setReviewing] = useState(null); // { txs, file }
   const [error, setError]         = useState(null);
   const [tab, setTab]             = useState("painel");
   const [showCfg, setShowCfg]     = useState(false);
@@ -162,6 +161,26 @@ export default function App() {
     } catch (e) {
       setError("Erro Supabase: " + e.message + " — verifique suas variáveis de ambiente");
     } finally { setLoading(false); }
+  }
+
+  async function doSave(calculated, file) {
+    const grossTotal = calculated.reduce((a,t) => a + t.gross_amount, 0);
+    const netTotal   = calculated.reduce((a,t) => a + t.net_amount,   0);
+    setImportMsg("Salvando no banco de dados…");
+    const { data: imp, error: ie } = await supabase.from("imports")
+      .insert({ filename: file.name, transaction_count: calculated.length, gross_total: grossTotal, net_total: netTotal })
+      .select().single();
+    if (ie) throw ie;
+    setImportMsg("Arquivando documento…");
+    const month = today.slice(0, 7);
+    const storagePath = `${month}/${imp.id}/${file.name}`;
+    const { error: ue } = await supabase.storage.from("extratos").upload(storagePath, file, { upsert: true });
+    if (!ue) await supabase.from("imports").update({ storage_path: storagePath }).eq("id", imp.id);
+    const { error: te } = await supabase.from("transactions").insert(calculated.map(t => ({ ...t, import_id: imp.id })));
+    if (te) throw te;
+    setImportMsg("Concluído!");
+    await loadAllData();
+    setTab("previsao");
   }
 
   const parseFile = useCallback(async (file) => {
@@ -204,26 +223,48 @@ export default function App() {
       const rawTxs = (parsed.transactions || []).filter(t => t.date && t.gross_amount !== undefined);
       if (rawTxs.length === 0) throw new Error("Nenhuma transação encontrada no arquivo");
       const calculated = calcForSave(rawTxs, config);
-      const grossTotal = calculated.reduce((a,t) => a + t.gross_amount, 0);
-      const netTotal   = calculated.reduce((a,t) => a + t.net_amount,   0);
-      setImportMsg("Salvando no banco de dados…");
-      const { data: imp, error: ie } = await supabase.from("imports")
-        .insert({ filename: file.name, transaction_count: calculated.length, gross_total: grossTotal, net_total: netTotal })
-        .select().single();
-      if (ie) throw ie;
-      setImportMsg("Arquivando documento…");
-      const month = today.slice(0, 7);
-      const storagePath = `${month}/${imp.id}/${file.name}`;
-      const { error: ue } = await supabase.storage.from("extratos").upload(storagePath, file, { upsert: true });
-      if (!ue) await supabase.from("imports").update({ storage_path: storagePath }).eq("id", imp.id);
-      const { error: te } = await supabase.from("transactions").insert(calculated.map(t => ({ ...t, import_id: imp.id })));
-      if (te) throw te;
-      setImportMsg("Concluído!");
-      await loadAllData();
-      setTab("previsao");
+      const hasUnknown = calculated.some(t => t.type === "desconhecido");
+      if (hasUnknown) {
+        setReviewing({ txs: calculated, file });
+        return;
+      }
+      await doSave(calculated, file);
     } catch (e) { setError("Erro ao importar: " + e.message); }
     finally { setImporting(false); setImportMsg(""); }
   }, [config, today]);
+
+  function updateReviewTx(idx, field, value) {
+    setReviewing(prev => {
+      const txs = [...prev.txs];
+      const tx = { ...txs[idx], [field]: value };
+      if (field === "type" && config[value]) {
+        const taxaNum  = parseFloat(config[value].taxa) || 0;
+        const prazoNum = parseInt(config[value].prazo)  || 1;
+        tx.taxa_pct        = taxaNum;
+        tx.prazo_dias      = prazoNum;
+        tx.net_amount      = tx.gross_amount * (1 - taxaNum / 100);
+        tx.settlement_date = addDays(tx.date, prazoNum);
+      }
+      if (field === "taxa_pct") {
+        const taxa = parseFloat(value) || 0;
+        tx.net_amount = tx.gross_amount * (1 - taxa / 100);
+      }
+      txs[idx] = tx;
+      return { ...prev, txs };
+    });
+  }
+
+  async function confirmReview() {
+    if (!reviewing) return;
+    const stillUnknown = reviewing.txs.some(t => t.type === "desconhecido");
+    if (stillUnknown) { setError("Classifique todos os itens destacados antes de salvar."); return; }
+    setImporting(true); setError(null);
+    try {
+      await doSave(reviewing.txs, reviewing.file);
+      setReviewing(null);
+    } catch(e) { setError("Erro ao salvar: " + e.message); }
+    finally { setImporting(false); setImportMsg(""); }
+  }
 
   const onDrop = (e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) parseFile(f); };
   const onPick = (e) => { const f = e.target.files[0]; if (f) parseFile(f); e.target.value = ""; };
@@ -489,6 +530,68 @@ export default function App() {
             {/* ══════════ IMPORTAR ══════════ */}
             {tab==="importar"&&(
               <div className="fd">
+
+                {/* ── REVISÃO DE TRANSAÇÕES DESCONHECIDAS ── */}
+                {reviewing&&(
+                  <div style={{marginBottom:20}}>
+                    <div style={{background:"#2A1F06",border:"1px solid #92400E",borderRadius:10,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div style={{fontSize:13,color:"#F59E0B"}}>
+                        ⚠ {reviewing.txs.filter(t=>t.type==="desconhecido").length} transação(ões) não identificada(s) — classifique antes de salvar
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        <button className="btn-o" style={{fontSize:12}} onClick={()=>setReviewing(null)}>Cancelar</button>
+                        <button className="btn-g" style={{fontSize:12}} onClick={confirmReview} disabled={importing}>
+                          {importing?"Salvando…":"Confirmar e Salvar"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="card" style={{overflow:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
+                        <thead>
+                          <tr style={{background:"#0A1322"}}>
+                            {["Data","Descrição","Bandeira / Tipo","Bruto","Taxa %","Líquido"].map(h=>(
+                              <th key={h} style={{padding:"9px 12px",fontSize:10,fontWeight:700,color:"#475569",textAlign:"left",textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:"1px solid #1A2840",whiteSpace:"nowrap"}}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reviewing.txs.map((tx,i)=>{
+                            const unknown = tx.type==="desconhecido";
+                            const rowBg = unknown?"#1C1400":"transparent";
+                            return (
+                              <tr key={i} style={{borderBottom:"1px solid #0D1520",background:rowBg}}>
+                                <td style={{padding:"8px 12px"}}><span className="mono" style={{fontSize:11,color:"#94A3B8"}}>{D(tx.date)}</span></td>
+                                <td style={{padding:"8px 12px",maxWidth:180}}><span style={{fontSize:11,color:"#CBD5E1"}}>{tx.description||"—"}</span></td>
+                                <td style={{padding:"8px 12px"}}>
+                                  <select
+                                    value={tx.type}
+                                    onChange={e=>updateReviewTx(i,"type",e.target.value)}
+                                    style={{background: unknown?"#2A1A00":"#050A12",border:`1px solid ${unknown?"#92400E":"#1E2D45"}`,borderRadius:6,padding:"5px 8px",color: unknown?"#F59E0B":"#E2E8F0",fontFamily:"inherit",fontSize:12,outline:"none",cursor:"pointer"}}
+                                  >
+                                    {unknown&&<option value="desconhecido">— Selecionar —</option>}
+                                    {Object.entries(config).map(([k,c])=>(
+                                      <option key={k} value={k}>{c.label}</option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td style={{padding:"8px 12px"}}><span className="mono" style={{fontSize:11,color:"#64748B"}}>{R(tx.gross_amount)}</span></td>
+                                <td style={{padding:"8px 12px"}}>
+                                  <input
+                                    type="number" step="0.01" value={tx.taxa_pct}
+                                    onChange={e=>updateReviewTx(i,"taxa_pct",e.target.value)}
+                                    className="inp" style={{width:70,padding:"5px 8px",fontSize:11}}
+                                  />
+                                </td>
+                                <td style={{padding:"8px 12px"}}><span className="mono" style={{fontSize:12,fontWeight:700,color:tx.net_amount<0?"#EF4444":"#10B981"}}>{R(tx.net_amount)}</span></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
                 {importing
                   ? <div style={{textAlign:"center",padding:"40px",background:"#0C1520",borderRadius:14,border:"1px solid #1A2840",marginBottom:20}}>
                       <div className="spin" style={{fontSize:32,marginBottom:14}}>⚙</div>
