@@ -2,26 +2,17 @@ import { useState } from "react";
 import { supabase } from "./supabase.js";
 
 export default function Auth() {
-  const [mode, setMode]       = useState("login"); // "login" | "register"
   const [email, setEmail]     = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
-  const [success, setSuccess] = useState(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setLoading(true); setError(null); setSuccess(null);
+    setLoading(true); setError(null);
     try {
-      if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        setSuccess("Conta criada! Verifique seu e-mail para confirmar o cadastro.");
-        setMode("login");
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
     } catch (e) {
       setError(e.message);
     } finally {
@@ -46,18 +37,13 @@ export default function Auth() {
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{width:52,height:52,borderRadius:12,background:"linear-gradient(135deg,#10B981,#059669)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:24,marginBottom:16}}>💳</div>
           <div style={{fontSize:22,fontWeight:700,color:"#F1F5F9"}}>Conferência Rede</div>
-          <div style={{fontSize:13,color:"#64748B",marginTop:4}}>{mode === "login" ? "Entre na sua conta" : "Crie uma conta"}</div>
+          <div style={{fontSize:13,color:"#64748B",marginTop:4}}>Entre na sua conta</div>
         </div>
 
         <div style={{background:"#0C1520",border:"1px solid #1A2840",borderRadius:14,padding:28}}>
           {error && (
             <div style={{background:"#1C0808",border:"1px solid #7F1D1D",borderRadius:8,padding:"10px 14px",color:"#EF4444",fontSize:13,marginBottom:16}}>
               {error}
-            </div>
-          )}
-          {success && (
-            <div style={{background:"#042F21",border:"1px solid #065F46",borderRadius:8,padding:"10px 14px",color:"#10B981",fontSize:13,marginBottom:16}}>
-              {success}
             </div>
           )}
 
@@ -69,17 +55,9 @@ export default function Auth() {
             <input className="auth-inp" type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} required minLength={6}/>
 
             <button className="auth-btn" type="submit" disabled={loading}>
-              {loading ? "Aguarde…" : mode === "login" ? "Entrar" : "Criar conta"}
+              {loading ? "Aguarde…" : "Entrar"}
             </button>
           </form>
-
-          <div style={{textAlign:"center",marginTop:18,fontSize:13,color:"#475569"}}>
-            {mode === "login" ? (
-              <>Não tem conta?{" "}<button className="auth-link" onClick={()=>{setMode("register");setError(null);setSuccess(null);}}>Criar conta</button></>
-            ) : (
-              <>Já tem conta?{" "}<button className="auth-link" onClick={()=>{setMode("login");setError(null);setSuccess(null);}}>Entrar</button></>
-            )}
-          </div>
         </div>
       </div>
     </div>
