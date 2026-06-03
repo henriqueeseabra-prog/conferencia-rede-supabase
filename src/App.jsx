@@ -114,8 +114,9 @@ export default function App() {
       const res = await fetch("/api/parse", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      const raw = data.text.replace(/```json|```/gi,"").trim();
-      const parsed = JSON.parse(raw);
+      const match = data.text.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("IA não retornou JSON válido. Tente novamente.");
+      const parsed = JSON.parse(match[0]);
       const rawTxs = (parsed.transactions || []).filter(t => t.date && t.gross_amount !== undefined);
       if (rawTxs.length === 0) throw new Error("Nenhuma transação encontrada no arquivo");
       const calculated = calcForSave(rawTxs, config);
