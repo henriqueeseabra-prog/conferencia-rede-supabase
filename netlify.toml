@@ -1,0 +1,16 @@
+[build]
+  command   = "npm run build"
+  publish   = "dist"
+  functions = "netlify/functions"
+
+# Redireciona /api/parse para a Netlify Function
+[[redirects]]
+  from   = "/api/parse"
+  to     = "/.netlify/functions/parse"
+  status = 200
+
+# SPA fallback — todas as rotas vão para o index.html
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
