@@ -189,7 +189,7 @@ export default function App() {
     setTab("previsao");
   }
 
-  async function callGemini(text, geminiKey, idx, total) {
+  async function callGemini(text, geminiKey, idx, total, attempt = 0) {
     if (idx !== undefined) setImportMsg(`IA classificando bloco ${idx} de ${total}…`);
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
@@ -205,7 +205,19 @@ export default function App() {
         }) }
     );
     const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
+    if (data.error) {
+      // rate limit: espera o tempo indicado e tenta de novo (até 5x)
+      if ((data.error.code === 429 || data.error.status === "RESOURCE_EXHAUSTED") && attempt < 5) {
+        const m = data.error.message.match(/retry in ([\d.]+)s/i);
+        const wait = Math.ceil(parseFloat(m?.[1] ?? 60)) + 3;
+        for (let s = wait; s > 0; s--) {
+          setImportMsg(`Limite da API — aguardando ${s}s… (bloco ${idx}/${total})`);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        return callGemini(text, geminiKey, idx, total, attempt + 1);
+      }
+      throw new Error(data.error.message);
+    }
     const aiText = (data.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("");
     if (!aiText) throw new Error("IA retornou resposta vazia no bloco " + idx);
     try { return JSON.parse(aiText.trim()); }
