@@ -115,8 +115,10 @@ export default function App() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       const match = data.text.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("IA não retornou JSON válido. Tente novamente.");
-      const parsed = JSON.parse(match[0]);
+      if (!match) throw new Error("Resposta da IA: " + data.text?.substring(0, 300));
+      let parsed;
+      try { parsed = JSON.parse(match[0]); }
+      catch(e) { throw new Error("JSON inválido: " + match[0].substring(0, 300)); }
       const rawTxs = (parsed.transactions || []).filter(t => t.date && t.gross_amount !== undefined);
       if (rawTxs.length === 0) throw new Error("Nenhuma transação encontrada no arquivo");
       const calculated = calcForSave(rawTxs, config);
