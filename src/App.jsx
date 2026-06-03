@@ -212,21 +212,20 @@ export default function App() {
         : [{ text: payload.content }];
       const geminiRes = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 16384, temperature: 0, responseMimeType: "application/json" } }) }
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 16384, temperature: 0 } }) }
       );
       const geminiData = await geminiRes.json();
       if (geminiData.error) throw new Error(geminiData.error.message);
-      // coleta texto de todas as partes (o modelo pode dividir em blocos)
-      const aiText = (geminiData.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("");
-      if (!aiText) throw new Error("IA retornou resposta vazia. Detalhes: " + JSON.stringify(geminiData).substring(0, 300));
+      // ignora partes de "thinking" (thought: true) e usa só o texto da resposta
+      const aiText = (geminiData.candidates?.[0]?.content?.parts || [])
+        .filter(p => !p.thought)
+        .map(p => p.text || "")
+        .join("");
+      if (!aiText) throw new Error("IA retornou resposta vazia");
       let parsed;
-      try { parsed = JSON.parse(aiText.trim()); }
-      catch(e) {
-        // tenta extrair objeto JSON da resposta
-        const m = aiText.match(/\{[\s\S]*\}/);
-        try { parsed = JSON.parse(m?.[0] ?? ""); }
-        catch { throw new Error("JSON truncado ou inválido (" + aiText.length + " chars). Início: " + aiText.substring(0, 300) + " … Fim: " + aiText.substring(aiText.length - 200)); }
-      }
+      const m = aiText.match(/\{[\s\S]*\}/);
+      try { parsed = JSON.parse(m?.[0] ?? aiText.trim()); }
+      catch { throw new Error("JSON inválido (" + aiText.length + " chars). Fim: …" + aiText.substring(aiText.length - 300)); }
       const rawTxs = (parsed.transactions || []).filter(t => t.date && t.gross_amount !== undefined);
       if (rawTxs.length === 0) throw new Error("Nenhuma transação encontrada no arquivo");
       const calculated = calcForSave(rawTxs, config);
