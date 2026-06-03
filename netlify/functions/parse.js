@@ -1,40 +1,32 @@
 // netlify/functions/parse.js
-// Essa função roda no servidor do Netlify — a chave de API nunca vai pro navegador
-
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: { message: "ANTHROPIC_API_KEY não configurada nas variáveis de ambiente do Netlify" } }),
-    };
+    return { statusCode: 500, body: JSON.stringify({ error: "GEMINI_API_KEY não configurada" }) };
   }
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type":      "application/json",
-        "x-api-key":         apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: event.body,
-    });
+    const { type, content, data: pdfData, prompt } = JSON.parse(event.body);
+
+    const parts = type === "pdf"
+      ? [{ inline_data: { mime_type: "application/pdf", data: pdfData } }, { text: prompt }]
+      : [{ text: content }];
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }] }) }
+    );
 
     const data = await response.json();
-    return {
-      statusCode: response.status,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    };
+    if (data.error) return { statusCode: 500, body: JSON.stringify({ error: data.error.message }) };
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) };
   } catch (err) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: { message: err.message } }),
-    };
+    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
   }
 };

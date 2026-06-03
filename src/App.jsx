@@ -94,27 +94,27 @@ export default function App() {
     setImporting(true); setError(null);
     const ext = file.name.split(".").pop().toLowerCase();
     try {
-      let messages;
+      let payload;
       setImportMsg("Lendo arquivo…");
       if (ext === "pdf") {
         setImportMsg("Enviando PDF para IA…");
         const b64 = await toBase64(file);
-        messages = [{ role:"user", content:[{ type:"document", source:{ type:"base64", media_type:"application/pdf", data:b64 }},{ type:"text", text:PARSE_PROMPT }]}];
+        payload = { type: "pdf", data: b64, prompt: PARSE_PROMPT };
       } else if (["xlsx","xls"].includes(ext)) {
         setImportMsg("Convertendo planilha…");
         const ab = await toBuffer(file);
         const wb = XLSX.read(ab, { type:"array" });
         const csv = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);
-        messages = [{ role:"user", content:`${PARSE_PROMPT}\n\nConteúdo:\n${csv}` }];
+        payload = { type: "text", content: `${PARSE_PROMPT}\n\nConteúdo:\n${csv}` };
       } else {
         const txt = await toText(file);
-        messages = [{ role:"user", content:`${PARSE_PROMPT}\n\nConteúdo:\n${txt}` }];
+        payload = { type: "text", content: `${PARSE_PROMPT}\n\nConteúdo:\n${txt}` };
       }
       setImportMsg("IA classificando transações…");
-      const res = await fetch("/api/parse", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:4000, messages }) });
+      const res = await fetch("/api/parse", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
       const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
-      const raw = data.content.map(b => b.text || "").join("").replace(/```json|```/gi,"").trim();
+      if (data.error) throw new Error(data.error);
+      const raw = data.text.replace(/```json|```/gi,"").trim();
       const parsed = JSON.parse(raw);
       const rawTxs = (parsed.transactions || []).filter(t => t.date && t.gross_amount !== undefined);
       if (rawTxs.length === 0) throw new Error("Nenhuma transação encontrada no arquivo");
