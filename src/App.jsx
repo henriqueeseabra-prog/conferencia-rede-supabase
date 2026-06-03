@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabase.js";
+import Auth from "./Auth.jsx";
 
 // ─── Config (salvo no localStorage) ───────────────────────────────────────
 const DEFAULT_CONFIG = {
@@ -47,6 +48,7 @@ Regras: debito=cartão débito, credito_vista=crédito à vista, alelo/ticket/vr
 
 // ─── App ───────────────────────────────────────────────────────────────────
 export default function App() {
+  const [session, setSession]     = useState(undefined); // undefined = carregando
   const [config, setConfig]       = useState(loadConfig);
   const [settlements, setSettlements] = useState([]);
   const [imports, setImports]     = useState([]);
@@ -63,7 +65,13 @@ export default function App() {
   const reconTimers = useRef({});
   const today = new Date().toISOString().split("T")[0];
 
-  useEffect(() => { loadAllData(); }, []);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setSession(session));
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => { if (session) loadAllData(); }, [session]);
 
   async function loadAllData() {
     setLoading(true);
@@ -237,6 +245,9 @@ export default function App() {
     .tx-row:not(:last-child){border-bottom:1px solid #111C2C;}
   `;
 
+  if (session === undefined) return null;
+  if (!session) return <Auth />;
+
   return (
     <div style={{fontFamily:"'DM Sans','Helvetica Neue',sans-serif",background:"#070C16",minHeight:"100vh",color:"#E2E8F0"}}>
       <style>{css}</style>
@@ -253,6 +264,7 @@ export default function App() {
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <button className="btn-o" onClick={()=>setShowCfg(p=>!p)}>⚙ Taxas & Prazos</button>
           <button className="btn-g" onClick={()=>{setTab("importar");setTimeout(()=>fileRef.current?.click(),100)}}>+ Importar Extrato</button>
+          <button className="btn-o" style={{fontSize:12}} onClick={()=>supabase.auth.signOut()} title="Sair">Sair</button>
           <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv,.txt" style={{display:"none"}} onChange={onPick}/>
         </div>
       </div>
