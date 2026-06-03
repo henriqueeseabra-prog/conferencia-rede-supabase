@@ -205,7 +205,18 @@ export default function App() {
         }) }
     );
     const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
+    if (data.error) {
+      if (data.error.code === 429 || data.error.status === "RESOURCE_EXHAUSTED") {
+        const m = data.error.message.match(/retry in ([\d.]+)s/i);
+        const wait = Math.ceil(parseFloat(m?.[1] ?? 60)) + 2;
+        for (let s = wait; s > 0; s--) {
+          setImportMsg(`Aguardando limite da API: ${s}s…`);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        return callGemini(text, geminiKey, idx, total);
+      }
+      throw new Error(data.error.message);
+    }
     const aiText = (data.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || "").join("");
     if (!aiText) throw new Error("IA retornou resposta vazia no bloco " + idx);
     try { return JSON.parse(aiText.trim()); }
