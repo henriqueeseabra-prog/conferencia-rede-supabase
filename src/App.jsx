@@ -258,12 +258,17 @@ export default function App() {
         } else {
           lines = (await toText(file)).split("\n");
         }
+        const CHUNK = 150;
         const header  = lines[0];
         const data    = lines.slice(1).filter(l => l.trim());
-        // arquivo inteiro em uma única chamada (economiza cota diária)
-        const content = [header, ...data].join("\n");
-        const parsed = await callGemini(`${PARSE_PROMPT}\n\nConteúdo:\n${content}`, geminiKey);
-        rawTxs.push(...(parsed.transactions || []));
+        const chunks  = [];
+        for (let i = 0; i < data.length; i += CHUNK) chunks.push(data.slice(i, i + CHUNK));
+        const total = chunks.length;
+        for (let i = 0; i < chunks.length; i++) {
+          const content = [header, ...chunks[i]].join("\n");
+          const parsed = await callGemini(`${PARSE_PROMPT}\n\nConteúdo:\n${content}`, geminiKey, i + 1, total);
+          rawTxs.push(...(parsed.transactions || []));
+        }
       }
 
       rawTxs = rawTxs.filter(t => t.date && t.gross_amount !== undefined);
