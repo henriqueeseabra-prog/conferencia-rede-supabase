@@ -80,7 +80,8 @@ function calcForSave(rawTxs, config) {
     const unknown = !config[tx.type] || tx.type === "desconhecido";
     const key = unknown ? null : tx.type;
     const taxaNum  = key ? parseFloat(config[key].taxa) || 0 : 0;
-    const prazoNum = key ? parseInt(config[key].prazo)  || 1 : 1;
+    const p = key ? parseInt(config[key].prazo) : NaN;
+    const prazoNum = isNaN(p) ? 1 : p;
     return {
       date: tx.date, description: tx.description || null,
       type: unknown ? "desconhecido" : tx.type,
@@ -291,7 +292,8 @@ export default function App() {
       const tx = { ...txs[idx], [field]: value };
       if (field === "type" && config[value]) {
         const taxaNum  = parseFloat(config[value].taxa) || 0;
-        const prazoNum = parseInt(config[value].prazo)  || 1;
+        const rp = parseInt(config[value].prazo);
+        const prazoNum = isNaN(rp) ? 1 : rp;
         tx.taxa_pct        = taxaNum;
         tx.prazo_dias      = prazoNum;
         tx.net_amount      = tx.gross_amount * (1 - taxaNum / 100);
