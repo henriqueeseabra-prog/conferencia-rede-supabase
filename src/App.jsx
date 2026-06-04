@@ -201,6 +201,7 @@ export default function App() {
             temperature: 0,
             responseMimeType: "application/json",
             responseSchema: RESPONSE_SCHEMA,
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }) }
     );
@@ -258,7 +259,7 @@ export default function App() {
         } else {
           lines = (await toText(file)).split("\n");
         }
-        const CHUNK = 150;
+        const CHUNK = 75;
         const header  = lines[0];
         const data    = lines.slice(1).filter(l => l.trim());
         const chunks  = [];
