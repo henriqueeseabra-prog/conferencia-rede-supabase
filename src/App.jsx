@@ -137,14 +137,17 @@ export default function App() {
   const [importMsg, setImportMsg] = useState("");
   const [reviewing, setReviewing] = useState(null); // { txs, file }
   const [error, setError]         = useState(null);
-  const [tab, setTab]             = useState("painel");
+  const [tab, setTab]             = useState("recebimentos");
   const [showCfg, setShowCfg]     = useState(false);
   const [dragging, setDragging]   = useState(false);
   const [empresa, setEmpresa]                 = useState(() => localStorage.getItem("conf_empresa") || "HES");
   const [periodoPanel, setPeriodoPanel]       = useState("30");
+  const [periodoVendas, setPeriodoVendas]     = useState("30");
   const [periodoPrevisao, setPeriodoPrevisao] = useState("30");
   const [panelCustomFrom, setPanelCustomFrom] = useState("");
   const [panelCustomTo,   setPanelCustomTo]   = useState("");
+  const [vendasCustomFrom, setVendasCustomFrom] = useState("");
+  const [vendasCustomTo,   setVendasCustomTo]   = useState("");
   const fileRef     = useRef(null);
   const reconTimers = useRef({});
   const today = new Date().toISOString().split("T")[0];
@@ -409,6 +412,24 @@ export default function App() {
     return acc;
   }, {});
 
+  const vendasCutoff = periodoVendas === "all" || periodoVendas === "custom" ? null : shiftDate(today, -parseInt(periodoVendas));
+  const vendasTxs = periodoVendas === "custom"
+    ? settlements.filter(s => (!vendasCustomFrom || s.date >= vendasCustomFrom) && (!vendasCustomTo || s.date <= vendasCustomTo))
+    : vendasCutoff ? settlements.filter(s => s.date >= vendasCutoff && s.date <= today) : settlements.filter(s => s.date <= today);
+  const vendasGross  = vendasTxs.reduce((a,s) => a + s.gross_amount, 0);
+  const vendasNet    = vendasTxs.reduce((a,s) => a + s.net_amount, 0);
+  const vendasTax    = vendasGross - vendasNet;
+  const vendasByType = vendasTxs.reduce((acc, s) => {
+    const k = config[s.type] ? s.type : "outros";
+    if (!acc[k]) acc[k] = { gross:0, net:0, count:0 };
+    acc[k].gross += s.gross_amount; acc[k].net += s.net_amount; acc[k].count++;
+    return acc;
+  }, {});
+  const vendasByDay = vendasTxs.reduce((acc, s) => {
+    (acc[s.date] = acc[s.date] || []).push(s);
+    return acc;
+  }, {});
+
   const pendingRecon = pastDays.filter(d => {
     const items = grouped[d] || [];
     if (!items.length) return false;
@@ -424,11 +445,12 @@ export default function App() {
   };
 
   const TABS = [
-    { id:"painel",      label:"Painel" },
-    { id:"importar",    label:"Importar",    badge: imports.length || null },
-    { id:"previsao",    label:"Previsão",    badge: futureDays.length || null },
-    { id:"conferencia", label:"Conferência", badge: pendingRecon || null, warn: pendingRecon > 0 },
-    { id:"transacoes",  label:"Transações",  badge: settlements.length || null },
+    { id:"recebimentos", label:"Recebimentos" },
+    { id:"vendas",       label:"Vendas" },
+    { id:"importar",     label:"Importar",    badge: imports.length || null },
+    { id:"previsao",     label:"Previsão",    badge: futureDays.length || null },
+    { id:"conferencia",  label:"Conferência", badge: pendingRecon || null, warn: pendingRecon > 0 },
+    { id:"transacoes",   label:"Transações",  badge: settlements.length || null },
   ];
 
   const css = `
@@ -549,7 +571,7 @@ export default function App() {
         {!loading&&(
           <>
             {/* ══════════ PAINEL ══════════ */}
-            {tab==="painel"&&(
+            {tab==="recebimentos"&&(
               <div className="fd">
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:18}}>
                   {[{v:"7",l:"7 dias"},{v:"30",l:"30 dias"},{v:"90",l:"90 dias"},{v:"all",l:"Tudo"},{v:"custom",l:"Período"}].map(p=>(
@@ -648,6 +670,105 @@ export default function App() {
                     <button className="btn-o" style={{fontSize:12}} onClick={()=>setTab("conferencia")}>Conferir →</button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ══════════ VENDAS ══════════ */}
+            {tab==="vendas"&&(
+              <div className="fd">
+                {settlements.length===0
+                  ? <div style={{textAlign:"center",padding:60,color:"#475569"}}>Importe um extrato para ver as vendas</div>
+                  : <>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:18}}>
+                        {[{v:"7",l:"7 dias"},{v:"30",l:"30 dias"},{v:"90",l:"90 dias"},{v:"all",l:"Tudo"},{v:"custom",l:"Período"}].map(p=>(
+                          <button key={p.v} onClick={()=>setPeriodoVendas(p.v)}
+                            style={{background:periodoVendas===p.v?"#10B981":"transparent",color:periodoVendas===p.v?"#001A0E":"#64748B",border:`1px solid ${periodoVendas===p.v?"#10B981":"#1E2D45"}`,borderRadius:8,padding:"6px 14px",fontFamily:"inherit",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                            {p.l}
+                          </button>
+                        ))}
+                        {periodoVendas==="custom"&&(
+                          <div style={{display:"flex",gap:8,alignItems:"center",marginLeft:4}}>
+                            <input type="date" value={vendasCustomFrom} onChange={e=>setVendasCustomFrom(e.target.value)} className="inp" style={{padding:"5px 10px",fontSize:12,width:140}}/>
+                            <span style={{color:"#475569",fontSize:12}}>até</span>
+                            <input type="date" value={vendasCustomTo} onChange={e=>setVendasCustomTo(e.target.value)} className="inp" style={{padding:"5px 10px",fontSize:12,width:140}}/>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
+                        {[
+                          {l:`Vendas${periodoVendas!=="all"&&periodoVendas!=="custom"?` (${periodoVendas}d)`:""}`, v:R(vendasGross), c:"#F1F5F9"},
+                          {l:"Líquido estimado", v:R(vendasNet),   c:"#10B981"},
+                          {l:"Taxas",            v:R(vendasTax),   c:"#EF4444"},
+                          {l:"Transações",       v:vendasTxs.length, c:"#F1F5F9"},
+                        ].map(s=>(
+                          <div key={s.l} className="stat">
+                            <div style={{fontSize:10,color:"#64748B",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:7}}>{s.l}</div>
+                            <div className="mono" style={{fontSize:20,fontWeight:700,color:s.c}}>{s.v}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:22}}>
+                        {Object.entries(vendasByType).map(([k,v])=>{
+                          const c=config[k]||{label:k,cor:"#94A3B8",bg:"#1A2840"};
+                          return (
+                            <div key={k} style={{background:"#0C1520",border:`1px solid ${c.bg}`,borderRadius:10,padding:"10px 16px",minWidth:130}}>
+                              <div style={{fontSize:10,color:c.cor,fontWeight:700,marginBottom:5}}>{c.label}</div>
+                              <div className="mono" style={{fontSize:15,fontWeight:700,color:"#F1F5F9"}}>{R(v.gross)}</div>
+                              <div style={{fontSize:11,color:"#475569",marginTop:2}}>{v.count} transações</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                        {Object.keys(vendasByDay).sort().reverse().map(day=>{
+                          const items=vendasByDay[day]||[];
+                          const dGross=items.reduce((a,i)=>a+i.gross_amount,0);
+                          const dNet=items.reduce((a,i)=>a+i.net_amount,0);
+                          const isToday=day===today;
+                          return (
+                            <div key={day} className="card" style={{overflow:"hidden",...(isToday?{borderColor:"#10B981"}:{})}}>
+                              <div className="day-hd" style={{background:isToday?"#041F12":"#0C1520"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                  <span className="mono" style={{fontSize:14,fontWeight:700,color:isToday?"#10B981":"#F1F5F9"}}>{D(day)}</span>
+                                  {isToday&&<span style={{background:"#10B981",color:"#001A0E",borderRadius:100,padding:"1px 7px",fontSize:9,fontWeight:800}}>HOJE</span>}
+                                  <span style={{color:"#334155",fontSize:12}}>{items.length} venda{items.length!==1?"s":""}</span>
+                                </div>
+                                <div style={{display:"flex",gap:22}}>
+                                  <div style={{textAlign:"right"}}>
+                                    <div style={{fontSize:9,color:"#475569",marginBottom:1,fontWeight:700}}>BRUTO</div>
+                                    <div className="mono" style={{fontSize:12,color:"#64748B"}}>{R(dGross)}</div>
+                                  </div>
+                                  <div style={{textAlign:"right"}}>
+                                    <div style={{fontSize:9,color:"#475569",marginBottom:1,fontWeight:700}}>LÍQUIDO EST.</div>
+                                    <div className="mono" style={{fontSize:16,fontWeight:700,color:"#10B981"}}>{R(dNet)}</div>
+                                  </div>
+                                </div>
+                              </div>
+                              {items.map((it,idx)=>(
+                                <div key={idx} className="tx-row tr" style={{...(idx<items.length-1?{borderBottom:"1px solid #111C2C"}:{})}}>
+                                  <TypeChip type={it.type} amount={it.gross_amount}/>
+                                  <div style={{flex:1,fontSize:12,color:"#94A3B8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                    <span style={{color:"#CBD5E1"}}>{it.description||"—"}</span>
+                                    {it.card_brand&&<span style={{color:"#475569",marginLeft:8}}>· {it.card_brand}</span>}
+                                    {it.nsu&&<span className="mono" style={{color:"#334155",marginLeft:8,fontSize:10}}>NSU {it.nsu}</span>}
+                                  </div>
+                                  <span className="mono" style={{fontSize:10,color:"#334155"}}>liquida {D(it.settlement_date)}</span>
+                                  <div className="mono" style={{fontSize:12,color:"#475569",textAlign:"right",minWidth:86}}>{R(it.gross_amount)}</div>
+                                  <div style={{textAlign:"right",minWidth:100}}>
+                                    <div className="mono" style={{fontSize:13,fontWeight:700,color:it.net_amount<0?"#EF4444":"#10B981"}}>{R(it.net_amount)}</div>
+                                    <div style={{fontSize:10,color:"#475569"}}>taxa {it.taxa_pct?.toFixed(2)}%</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                }
               </div>
             )}
 
