@@ -369,6 +369,8 @@ export default function App() {
   }
 
   // ─── Derived data ──────────────────────────────────────────────────────
+  const shiftDate = (base, days) => { const d = new Date(base + "T12:00:00"); d.setDate(d.getDate() + days); return d.toISOString().split("T")[0]; };
+
   const grouped = settlements.reduce((acc, s) => { (acc[s.settlement_date] = acc[s.settlement_date] || []).push(s); return acc; }, {});
   const allDays     = Object.keys(grouped).sort();
   const futureDays  = allDays.filter(d => d >= today);
@@ -381,8 +383,6 @@ export default function App() {
   const totGross = settlements.reduce((a,s) => a + s.gross_amount, 0);
   const totNet   = settlements.reduce((a,s) => a + s.net_amount,   0);
   const totTax   = totGross - totNet;
-
-  const shiftDate = (base, days) => { const d = new Date(base + "T12:00:00"); d.setDate(d.getDate() + days); return d.toISOString().split("T")[0]; };
 
   const panelCutoff = periodoPanel === "all" ? null : shiftDate(today, -parseInt(periodoPanel));
   const panelTxs    = panelCutoff ? settlements.filter(s => s.settlement_date >= panelCutoff) : settlements;
