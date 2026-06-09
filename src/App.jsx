@@ -140,7 +140,8 @@ export default function App() {
   const [tab, setTab]             = useState("painel");
   const [showCfg, setShowCfg]     = useState(false);
   const [dragging, setDragging]   = useState(false);
-  const [showAll, setShowAll]     = useState(false);
+  const [periodoPanel, setPeriodoPanel]       = useState("30");
+  const [periodoPrevisao, setPeriodoPrevisao] = useState("30");
   const fileRef     = useRef(null);
   const reconTimers = useRef({});
   const today = new Date().toISOString().split("T")[0];
@@ -372,15 +373,31 @@ export default function App() {
   const allDays     = Object.keys(grouped).sort();
   const futureDays  = allDays.filter(d => d >= today);
   const pastDays    = allDays.filter(d => d <  today).reverse();
-  const previsaoDays = showAll ? allDays : futureDays;
-  const conferenciaDays = [...pastDays.slice(0, 90), ...futureDays].sort();
+  const previsaoCutoff    = periodoPrevisao === "all" ? null : shiftDate(today, parseInt(periodoPrevisao));
+  const filteredFuture    = previsaoCutoff ? futureDays.filter(d => d <= previsaoCutoff) : futureDays;
+  const previsaoDays      = periodoPrevisao === "all" ? allDays : filteredFuture;
+  const conferenciaDays = [...futureDays, ...pastDays.slice(0, 90)];
 
   const totGross = settlements.reduce((a,s) => a + s.gross_amount, 0);
   const totNet   = settlements.reduce((a,s) => a + s.net_amount,   0);
   const totTax   = totGross - totNet;
 
+  const shiftDate = (base, days) => { const d = new Date(base + "T12:00:00"); d.setDate(d.getDate() + days); return d.toISOString().split("T")[0]; };
+
+  const panelCutoff = periodoPanel === "all" ? null : shiftDate(today, -parseInt(periodoPanel));
+  const panelTxs    = panelCutoff ? settlements.filter(s => s.settlement_date >= panelCutoff) : settlements;
+  const panelGross  = panelTxs.reduce((a,s) => a + s.gross_amount, 0);
+  const panelNet    = panelTxs.reduce((a,s) => a + s.net_amount, 0);
+  const panelTax    = panelGross - panelNet;
+  const panelByType = panelTxs.reduce((acc, s) => {
+    const k = config[s.type] ? s.type : "outros";
+    if (!acc[k]) acc[k] = { gross:0, net:0, count:0 };
+    acc[k].gross += s.gross_amount; acc[k].net += s.net_amount; acc[k].count++;
+    return acc;
+  }, {});
+
   const byType = settlements.reduce((acc, s) => {
-    const k = config[s.type] ? s.type : "debito";
+    const k = config[s.type] ? s.type : "outros";
     if (!acc[k]) acc[k] = { gross:0, net:0, count:0 };
     acc[k].gross += s.gross_amount; acc[k].net += s.net_amount; acc[k].count++;
     return acc;
@@ -518,12 +535,20 @@ export default function App() {
             {/* ══════════ PAINEL ══════════ */}
             {tab==="painel"&&(
               <div className="fd">
+                <div style={{display:"flex",gap:6,marginBottom:18}}>
+                  {[{v:"7",l:"7 dias"},{v:"30",l:"30 dias"},{v:"90",l:"90 dias"},{v:"all",l:"Tudo"}].map(p=>(
+                    <button key={p.v} onClick={()=>setPeriodoPanel(p.v)}
+                      style={{background:periodoPanel===p.v?"#10B981":"transparent",color:periodoPanel===p.v?"#001A0E":"#64748B",border:`1px solid ${periodoPanel===p.v?"#10B981":"#1E2D45"}`,borderRadius:8,padding:"6px 14px",fontFamily:"inherit",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                      {p.l}
+                    </button>
+                  ))}
+                </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
                   {[
-                    {l:"Líquido Acumulado", v:R(totNet),      c:"#10B981"},
-                    {l:"Bruto Total",       v:R(totGross),    c:"#F1F5F9"},
-                    {l:"Taxas Pagas",       v:R(totTax),      c:"#EF4444"},
-                    {l:"Extratos",          v:imports.length, c:"#F1F5F9"},
+                    {l:`Líquido${periodoPanel!=="all"?` (${periodoPanel}d)`:""}`, v:R(panelNet),    c:"#10B981"},
+                    {l:"Bruto",   v:R(panelGross),    c:"#F1F5F9"},
+                    {l:"Taxas",   v:R(panelTax),      c:"#EF4444"},
+                    {l:"Extratos",v:imports.length,   c:"#F1F5F9"},
                   ].map(s=>(
                     <div key={s.l} className="stat">
                       <div style={{fontSize:10,color:"#64748B",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:7}}>{s.l}</div>
@@ -533,8 +558,8 @@ export default function App() {
                 </div>
 
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:22}}>
-                  {Object.entries(byType).map(([k,v])=>{
-                    const c=config[k]||config.debito;
+                  {Object.entries(panelByType).map(([k,v])=>{
+                    const c=config[k]||{label:k,cor:"#94A3B8",bg:"#1A2840"};
                     return (
                       <div key={k} style={{background:"#0C1520",border:`1px solid ${c.bg}`,borderRadius:10,padding:"10px 16px",minWidth:130}}>
                         <div style={{fontSize:10,color:c.cor,fontWeight:700,marginBottom:5}}>{c.label}</div>
@@ -722,12 +747,16 @@ export default function App() {
                   : <>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
                         <div style={{fontSize:13,color:"#64748B"}}>
-                          Mostrando <span style={{color:"#94A3B8"}}>{showAll?"todo o histórico acumulado":"apenas recebimentos futuros"}</span>
-                          {" · "}{previsaoDays.length} dias
+                          {previsaoDays.length} dia{previsaoDays.length!==1?"s":""} · {periodoPrevisao==="all"?"histórico completo":`próximos ${periodoPrevisao} dias`}
                         </div>
-                        <button className="btn-o" style={{fontSize:12}} onClick={()=>setShowAll(p=>!p)}>
-                          {showAll?"Só futuros":"Ver histórico completo"}
-                        </button>
+                        <div style={{display:"flex",gap:6}}>
+                          {[{v:"7",l:"7 dias"},{v:"30",l:"30 dias"},{v:"90",l:"90 dias"},{v:"all",l:"Tudo"}].map(p=>(
+                            <button key={p.v} onClick={()=>setPeriodoPrevisao(p.v)}
+                              style={{background:periodoPrevisao===p.v?"#10B981":"transparent",color:periodoPrevisao===p.v?"#001A0E":"#64748B",border:`1px solid ${periodoPrevisao===p.v?"#10B981":"#1E2D45"}`,borderRadius:8,padding:"6px 14px",fontFamily:"inherit",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                              {p.l}
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
                       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
