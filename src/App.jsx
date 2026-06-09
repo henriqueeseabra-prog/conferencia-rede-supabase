@@ -359,7 +359,7 @@ export default function App() {
   const futureDays  = allDays.filter(d => d >= today);
   const pastDays    = allDays.filter(d => d <  today).reverse();
   const previsaoDays = showAll ? allDays : futureDays;
-  const conferenciaDays = [...pastDays.slice(0, 90), ...futureDays.slice(0, 14)].sort();
+  const conferenciaDays = [...pastDays.slice(0, 90), ...futureDays].sort();
 
   const totGross = settlements.reduce((a,s) => a + s.gross_amount, 0);
   const totNet   = settlements.reduce((a,s) => a + s.net_amount,   0);
