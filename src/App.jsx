@@ -140,6 +140,7 @@ export default function App() {
   const [tab, setTab]             = useState("painel");
   const [showCfg, setShowCfg]     = useState(false);
   const [dragging, setDragging]   = useState(false);
+  const [empresa, setEmpresa]                 = useState(() => localStorage.getItem("conf_empresa") || "HES");
   const [periodoPanel, setPeriodoPanel]       = useState("30");
   const [periodoPrevisao, setPeriodoPrevisao] = useState("30");
   const [panelCustomFrom, setPanelCustomFrom] = useState("");
@@ -154,7 +155,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => { if (session) loadAllData(); }, [session]);
+  useEffect(() => { if (session) loadAllData(); }, [session, empresa]);
 
   async function fetchAllTransactions() {
     const PAGE = 1000;
@@ -162,6 +163,7 @@ export default function App() {
     while (true) {
       const { data, error } = await supabase
         .from("transactions").select("*, imports(filename, imported_at)")
+        .eq("empresa", empresa)
         .order("settlement_date").range(from, from + PAGE - 1);
       if (error) throw error;
       all = [...all, ...(data || [])];
@@ -176,8 +178,8 @@ export default function App() {
     try {
       const [txs, { data: recons }, { data: imps }] = await Promise.all([
         fetchAllTransactions(),
-        supabase.from("reconciliations").select("*"),
-        supabase.from("imports").select("*").order("imported_at", { ascending: false }),
+        supabase.from("reconciliations").select("*").eq("empresa", empresa),
+        supabase.from("imports").select("*").eq("empresa", empresa).order("imported_at", { ascending: false }),
       ]);
       setSettlements(txs || []);
       setRecon((recons || []).reduce((acc, r) => ({ ...acc, [`${r.settlement_date}__${r.type}`]: r.actual_amount != null ? String(r.actual_amount) : "" }), {}));
@@ -192,7 +194,7 @@ export default function App() {
     const netTotal   = calculated.reduce((a,t) => a + t.net_amount,   0);
     setImportMsg("Salvando no banco de dados…");
     const { data: imp, error: ie } = await supabase.from("imports")
-      .insert({ filename: file.name, transaction_count: calculated.length, gross_total: grossTotal, net_total: netTotal })
+      .insert({ empresa, filename: file.name, transaction_count: calculated.length, gross_total: grossTotal, net_total: netTotal })
       .select().single();
     if (ie) throw ie;
     setImportMsg("Arquivando documento…");
@@ -200,7 +202,7 @@ export default function App() {
     const storagePath = `${month}/${imp.id}/${file.name}`;
     const { error: ue } = await supabase.storage.from("extratos").upload(storagePath, file, { upsert: true });
     if (!ue) await supabase.from("imports").update({ storage_path: storagePath }).eq("id", imp.id);
-    const { error: te } = await supabase.from("transactions").insert(calculated.map(t => ({ ...t, import_id: imp.id })));
+    const { error: te } = await supabase.from("transactions").insert(calculated.map(t => ({ ...t, import_id: imp.id, empresa })));
     if (te) throw te;
     setImportMsg("Concluído!");
     await loadAllData();
@@ -346,7 +348,7 @@ export default function App() {
     clearTimeout(reconTimers.current[key]);
     reconTimers.current[key] = setTimeout(async () => {
       const val = parseFloat(value);
-      await supabase.from("reconciliations").upsert({ settlement_date: day, type, actual_amount: isNaN(val) ? null : val, updated_at: new Date().toISOString() }, { onConflict: "settlement_date,type" });
+      await supabase.from("reconciliations").upsert({ empresa, settlement_date: day, type, actual_amount: isNaN(val) ? null : val, updated_at: new Date().toISOString() }, { onConflict: "empresa,settlement_date,type" });
     }, 800);
   };
 
@@ -478,7 +480,17 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg,#10B981,#059669)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>💳</div>
           <div>
-            <div style={{fontSize:14,fontWeight:700,color:"#F1F5F9",lineHeight:1.1}}>Conferência Rede</div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:14,fontWeight:700,color:"#F1F5F9",lineHeight:1.1}}>Conferência {empresa}</span>
+              <div style={{display:"flex",gap:3}}>
+                {["HES","HLS"].map(e=>(
+                  <button key={e} onClick={()=>{ setEmpresa(e); localStorage.setItem("conf_empresa",e); }}
+                    style={{background:empresa===e?"#10B981":"#0A1322",color:empresa===e?"#001A0E":"#475569",border:`1px solid ${empresa===e?"#10B981":"#1E2D45"}`,borderRadius:6,padding:"2px 9px",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div style={{fontSize:10,color:"#64748B",marginTop:1}}>{imports.length} importações · {settlements.length} transações · {R(totNet)} acumulado</div>
           </div>
         </div>
