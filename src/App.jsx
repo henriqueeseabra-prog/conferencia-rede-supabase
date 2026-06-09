@@ -142,6 +142,8 @@ export default function App() {
   const [dragging, setDragging]   = useState(false);
   const [periodoPanel, setPeriodoPanel]       = useState("30");
   const [periodoPrevisao, setPeriodoPrevisao] = useState("30");
+  const [panelCustomFrom, setPanelCustomFrom] = useState("");
+  const [panelCustomTo,   setPanelCustomTo]   = useState("");
   const fileRef     = useRef(null);
   const reconTimers = useRef({});
   const today = new Date().toISOString().split("T")[0];
@@ -384,8 +386,10 @@ export default function App() {
   const totNet   = settlements.reduce((a,s) => a + s.net_amount,   0);
   const totTax   = totGross - totNet;
 
-  const panelCutoff = periodoPanel === "all" ? null : shiftDate(today, -parseInt(periodoPanel));
-  const panelTxs    = panelCutoff ? settlements.filter(s => s.settlement_date >= panelCutoff) : settlements;
+  const panelCutoff = periodoPanel === "all" || periodoPanel === "custom" ? null : shiftDate(today, -parseInt(periodoPanel));
+  const panelTxs    = periodoPanel === "custom"
+    ? settlements.filter(s => (!panelCustomFrom || s.settlement_date >= panelCustomFrom) && (!panelCustomTo || s.settlement_date <= panelCustomTo))
+    : panelCutoff ? settlements.filter(s => s.settlement_date >= panelCutoff) : settlements;
   const panelGross  = panelTxs.reduce((a,s) => a + s.gross_amount, 0);
   const panelNet    = panelTxs.reduce((a,s) => a + s.net_amount, 0);
   const panelTax    = panelGross - panelNet;
@@ -535,13 +539,22 @@ export default function App() {
             {/* ══════════ PAINEL ══════════ */}
             {tab==="painel"&&(
               <div className="fd">
-                <div style={{display:"flex",gap:6,marginBottom:18}}>
-                  {[{v:"7",l:"7 dias"},{v:"30",l:"30 dias"},{v:"90",l:"90 dias"},{v:"all",l:"Tudo"}].map(p=>(
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:18}}>
+                  {[{v:"7",l:"7 dias"},{v:"30",l:"30 dias"},{v:"90",l:"90 dias"},{v:"all",l:"Tudo"},{v:"custom",l:"Período"}].map(p=>(
                     <button key={p.v} onClick={()=>setPeriodoPanel(p.v)}
                       style={{background:periodoPanel===p.v?"#10B981":"transparent",color:periodoPanel===p.v?"#001A0E":"#64748B",border:`1px solid ${periodoPanel===p.v?"#10B981":"#1E2D45"}`,borderRadius:8,padding:"6px 14px",fontFamily:"inherit",fontSize:12,fontWeight:600,cursor:"pointer"}}>
                       {p.l}
                     </button>
                   ))}
+                  {periodoPanel==="custom"&&(
+                    <div style={{display:"flex",gap:8,alignItems:"center",marginLeft:4}}>
+                      <input type="date" value={panelCustomFrom} onChange={e=>setPanelCustomFrom(e.target.value)}
+                        className="inp" style={{padding:"5px 10px",fontSize:12,width:140}}/>
+                      <span style={{color:"#475569",fontSize:12}}>até</span>
+                      <input type="date" value={panelCustomTo} onChange={e=>setPanelCustomTo(e.target.value)}
+                        className="inp" style={{padding:"5px 10px",fontSize:12,width:140}}/>
+                    </div>
+                  )}
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
                   {[
