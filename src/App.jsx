@@ -163,7 +163,7 @@ export default function App() {
       ]);
       if (e1) throw e1;
       setSettlements(txs || []);
-      setRecon((recons || []).reduce((acc, r) => ({ ...acc, [r.settlement_date]: r.actual_amount != null ? String(r.actual_amount) : "" }), {}));
+      setRecon((recons || []).reduce((acc, r) => ({ ...acc, [`${r.settlement_date}__${r.type}`]: r.actual_amount != null ? String(r.actual_amount) : "" }), {}));
       setImports(imps || []);
     } catch (e) {
       setError("Erro Supabase: " + e.message + " — verifique suas variáveis de ambiente");
@@ -323,12 +323,13 @@ export default function App() {
   const onDrop = (e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) parseFile(f); };
   const onPick = (e) => { const f = e.target.files[0]; if (f) parseFile(f); e.target.value = ""; };
 
-  const updateRecon = (day, value) => {
-    setRecon(p => ({ ...p, [day]: value }));
-    clearTimeout(reconTimers.current[day]);
-    reconTimers.current[day] = setTimeout(async () => {
+  const updateRecon = (day, type, value) => {
+    const key = `${day}__${type}`;
+    setRecon(p => ({ ...p, [key]: value }));
+    clearTimeout(reconTimers.current[key]);
+    reconTimers.current[key] = setTimeout(async () => {
       const val = parseFloat(value);
-      await supabase.from("reconciliations").upsert({ settlement_date: day, actual_amount: isNaN(val) ? null : val, updated_at: new Date().toISOString() }, { onConflict: "settlement_date" });
+      await supabase.from("reconciliations").upsert({ settlement_date: day, type, actual_amount: isNaN(val) ? null : val, updated_at: new Date().toISOString() }, { onConflict: "settlement_date,type" });
     }, 800);
   };
 
@@ -371,7 +372,12 @@ export default function App() {
     return acc;
   }, {});
 
-  const pendingRecon = pastDays.filter(d => grouped[d]?.length > 0 && (!recon[d] || recon[d] === "")).length;
+  const pendingRecon = pastDays.filter(d => {
+    const items = grouped[d] || [];
+    if (!items.length) return false;
+    const types = [...new Set(items.map(i => i.type))];
+    return types.some(t => { const v = recon[`${d}__${t}`]; return !v || v === ""; });
+  }).length;
 
   const TypeChip = ({ type, amount }) => {
     const neg = amount < 0;
@@ -805,7 +811,7 @@ export default function App() {
                         <table style={{width:"100%",borderCollapse:"collapse"}}>
                           <thead>
                             <tr style={{background:"#0A1322"}}>
-                              {["Data","Lançtos","Modalidades","Previsto","Recebido","Diferença","Status"].map(h=>(
+                              {["Data","Modalidade","Lançtos","Previsto","Recebido","Diferença","Status"].map(h=>(
                                 <th key={h} style={{padding:"10px 12px",fontSize:10,fontWeight:700,color:"#475569",textAlign:"left",textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:"1px solid #1A2840",whiteSpace:"nowrap"}}>{h}</th>
                               ))}
                             </tr>
@@ -814,41 +820,55 @@ export default function App() {
                             {conferenciaDays.map(day=>{
                               const items=grouped[day]||[];
                               if(!items.length) return null;
-                              const expected=items.reduce((a,i)=>a+i.net_amount,0);
-                              const rawVal=recon[day];
-                              const actual=rawVal!==undefined&&rawVal!==""?parseFloat(rawVal)||0:null;
-                              const diff=actual!==null?actual-expected:null;
                               const isPast=day<today, isToday=day===today;
                               const dayTypes=[...new Set(items.map(i=>i.type))];
-                              let s={txt:"—",c:"#475569"};
-                              if(actual!==null){ if(Math.abs(diff)<0.02) s={txt:"✓ OK",c:"#10B981"}; else if(diff>0) s={txt:"↑ A mais",c:"#F59E0B"}; else s={txt:"↓ A menos",c:"#EF4444"}; }
-                              else if(isPast) s={txt:"⏳ Pendente",c:"#F59E0B"};
-                              else s={txt:"◷ Futuro",c:"#334155"};
-                              return (
-                                <tr key={day} className="tr" style={{borderBottom:"1px solid #0D1520"}}>
-                                  <td style={{padding:"11px 12px"}}>
-                                    <span className="mono" style={{fontSize:13,fontWeight:600,color:isToday?"#10B981":isPast?"#9CA3AF":"#F1F5F9"}}>
-                                      {D(day)}{isToday&&<span style={{marginLeft:6,fontSize:9,background:"#10B981",color:"#001A0E",borderRadius:100,padding:"1px 6px",fontWeight:800}}>HOJE</span>}
-                                    </span>
-                                  </td>
-                                  <td style={{padding:"11px 12px"}}><span style={{fontSize:12,color:"#94A3B8"}}>{items.length}</span></td>
-                                  <td style={{padding:"11px 12px"}}>
-                                    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                                      {dayTypes.map(t=>{const c=config[t]||config.debito;return<span key={t} style={{background:c.bg,color:c.cor,borderRadius:100,padding:"1px 6px",fontSize:9,fontWeight:700,fontFamily:"var(--mono)"}}>{c.label}</span>;})}
-                                    </div>
-                                  </td>
-                                  <td style={{padding:"11px 12px"}}><span className="mono" style={{fontSize:13,fontWeight:700,color:"#10B981"}}>{R(expected)}</span></td>
-                                  <td style={{padding:"11px 12px"}}>
-                                    <input className="recon-in" type="number" step="0.01" placeholder="0,00" value={recon[day]??""} onChange={e=>updateRecon(day,e.target.value)}/>
-                                  </td>
-                                  <td style={{padding:"11px 12px"}}>
-                                    <span className="mono" style={{fontSize:13,fontWeight:600,color:diff===null?"#334155":Math.abs(diff)<0.02?"#10B981":diff>0?"#F59E0B":"#EF4444"}}>
-                                      {diff!==null?(diff>=0?"+":"")+R(diff):"—"}
-                                    </span>
-                                  </td>
-                                  <td style={{padding:"11px 12px"}}><span style={{fontSize:12,fontWeight:600,color:s.c}}>{s.txt}</span></td>
-                                </tr>
-                              );
+                              const dayNet=items.reduce((a,i)=>a+i.net_amount,0);
+                              return dayTypes.map((type,ti)=>{
+                                const typeItems=items.filter(i=>i.type===type);
+                                const expected=typeItems.reduce((a,i)=>a+i.net_amount,0);
+                                const reconKey=`${day}__${type}`;
+                                const rawVal=recon[reconKey];
+                                const actual=rawVal!==undefined&&rawVal!==""?parseFloat(rawVal)||0:null;
+                                const diff=actual!==null?actual-expected:null;
+                                const cfg=config[type]||{label:type,cor:"#94A3B8",bg:"#1A2840"};
+                                let s={txt:"—",c:"#475569"};
+                                if(actual!==null){ if(Math.abs(diff)<0.02) s={txt:"✓ OK",c:"#10B981"}; else if(diff>0) s={txt:"↑ A mais",c:"#F59E0B"}; else s={txt:"↓ A menos",c:"#EF4444"}; }
+                                else if(isPast) s={txt:"⏳ Pendente",c:"#F59E0B"};
+                                else s={txt:"◷ Futuro",c:"#334155"};
+                                const isFirstOfDay=ti===0;
+                                const isLastOfDay=ti===dayTypes.length-1;
+                                return (
+                                  <tr key={reconKey} className="tr" style={{borderBottom:isLastOfDay?"2px solid #1A2840":"1px solid #0D1520"}}>
+                                    <td style={{padding:"11px 12px",verticalAlign:"middle"}}>
+                                      {isFirstOfDay&&(
+                                        <div>
+                                          <span className="mono" style={{fontSize:13,fontWeight:600,color:isToday?"#10B981":isPast?"#9CA3AF":"#F1F5F9"}}>
+                                            {D(day)}
+                                          </span>
+                                          {isToday&&<span style={{marginLeft:6,fontSize:9,background:"#10B981",color:"#001A0E",borderRadius:100,padding:"1px 6px",fontWeight:800}}>HOJE</span>}
+                                          {dayTypes.length>1&&(
+                                            <div style={{fontSize:10,color:"#334155",marginTop:2,fontFamily:"var(--mono)"}}>total {R(dayNet)}</div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td style={{padding:"11px 12px"}}>
+                                      <span style={{background:cfg.bg,color:cfg.cor,borderRadius:100,padding:"2px 8px",fontSize:10,fontWeight:700,fontFamily:"var(--mono)",whiteSpace:"nowrap"}}>{cfg.label}</span>
+                                    </td>
+                                    <td style={{padding:"11px 12px"}}><span style={{fontSize:12,color:"#94A3B8"}}>{typeItems.length}</span></td>
+                                    <td style={{padding:"11px 12px"}}><span className="mono" style={{fontSize:13,fontWeight:700,color:"#10B981"}}>{R(expected)}</span></td>
+                                    <td style={{padding:"11px 12px"}}>
+                                      <input className="recon-in" type="number" step="0.01" placeholder="0,00" value={recon[reconKey]??""} onChange={e=>updateRecon(day,type,e.target.value)}/>
+                                    </td>
+                                    <td style={{padding:"11px 12px"}}>
+                                      <span className="mono" style={{fontSize:13,fontWeight:600,color:diff===null?"#334155":Math.abs(diff)<0.02?"#10B981":diff>0?"#F59E0B":"#EF4444"}}>
+                                        {diff!==null?(diff>=0?"+":"")+R(diff):"—"}
+                                      </span>
+                                    </td>
+                                    <td style={{padding:"11px 12px"}}><span style={{fontSize:12,fontWeight:600,color:s.c}}>{s.txt}</span></td>
+                                  </tr>
+                                );
+                              });
                             })}
                           </tbody>
                         </table>

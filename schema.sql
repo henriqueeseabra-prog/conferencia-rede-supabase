@@ -31,13 +31,22 @@ CREATE TABLE transactions (
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Conferência (o que efetivamente caiu na conta por dia)
+-- 3. Conferência (o que efetivamente caiu na conta por dia e por modalidade)
 CREATE TABLE reconciliations (
-  settlement_date DATE PRIMARY KEY,
+  settlement_date DATE    NOT NULL,
+  type            TEXT    NOT NULL,
   actual_amount   NUMERIC(12,2),
   notes           TEXT,
-  updated_at      TIMESTAMPTZ DEFAULT NOW()
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (settlement_date, type)
 );
+
+-- ============================================================
+-- MIGRATION (execute se já tinha a tabela antiga):
+--   ALTER TABLE reconciliations ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT '';
+--   ALTER TABLE reconciliations DROP CONSTRAINT IF EXISTS reconciliations_pkey;
+--   ALTER TABLE reconciliations ADD PRIMARY KEY (settlement_date, type);
+-- ============================================================
 
 -- Índices para performance
 CREATE INDEX idx_tx_import_id       ON transactions(import_id);
