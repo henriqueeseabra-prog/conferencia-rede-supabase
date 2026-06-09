@@ -153,15 +153,29 @@ export default function App() {
 
   useEffect(() => { if (session) loadAllData(); }, [session]);
 
+  async function fetchAllTransactions() {
+    const PAGE = 1000;
+    let all = [], from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("transactions").select("*, imports(filename, imported_at)")
+        .order("settlement_date").range(from, from + PAGE - 1);
+      if (error) throw error;
+      all = [...all, ...(data || [])];
+      if (!data || data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  }
+
   async function loadAllData() {
     setLoading(true);
     try {
-      const [{ data: txs, error: e1 }, { data: recons }, { data: imps }] = await Promise.all([
-        supabase.from("transactions").select("*, imports(filename, imported_at)").order("settlement_date").limit(50000),
+      const [txs, { data: recons }, { data: imps }] = await Promise.all([
+        fetchAllTransactions(),
         supabase.from("reconciliations").select("*"),
         supabase.from("imports").select("*").order("imported_at", { ascending: false }),
       ]);
-      if (e1) throw e1;
       setSettlements(txs || []);
       setRecon((recons || []).reduce((acc, r) => ({ ...acc, [`${r.settlement_date}__${r.type}`]: r.actual_amount != null ? String(r.actual_amount) : "" }), {}));
       setImports(imps || []);
