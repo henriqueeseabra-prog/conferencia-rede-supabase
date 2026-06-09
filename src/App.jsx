@@ -157,7 +157,7 @@ export default function App() {
     setLoading(true);
     try {
       const [{ data: txs, error: e1 }, { data: recons }, { data: imps }] = await Promise.all([
-        supabase.from("transactions").select("*, imports(filename, imported_at)").order("settlement_date"),
+        supabase.from("transactions").select("*, imports(filename, imported_at)").order("settlement_date").limit(50000),
         supabase.from("reconciliations").select("*"),
         supabase.from("imports").select("*").order("imported_at", { ascending: false }),
       ]);
