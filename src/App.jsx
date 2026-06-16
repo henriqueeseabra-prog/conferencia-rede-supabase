@@ -233,11 +233,16 @@ export default function App() {
     );
     const data = await res.json();
     if (data.error) {
-      if (data.error.code === 429 || data.error.status === "RESOURCE_EXHAUSTED") {
-        const m = data.error.message.match(/retry in ([\d.]+)s/i);
-        const wait = Math.ceil(parseFloat(m?.[1] ?? 60)) + 2;
+      const retryable = data.error.code === 429
+        || data.error.status === "RESOURCE_EXHAUSTED"
+        || data.error.status === "UNAVAILABLE"
+        || data.error.code === 503
+        || /high demand|temporarily unavailable|try again later/i.test(data.error.message || "");
+      if (retryable) {
+        const m = data.error.message?.match(/retry in ([\d.]+)s/i);
+        const wait = Math.ceil(parseFloat(m?.[1] ?? 30)) + 2;
         for (let s = wait; s > 0; s--) {
-          setImportMsg(`Aguardando limite da API: ${s}s…`);
+          setImportMsg(`IA sobrecarregada, aguardando ${s}s…`);
           await new Promise(r => setTimeout(r, 1000));
         }
         return callGemini(text, geminiKey, idx, total);
