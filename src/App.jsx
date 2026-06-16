@@ -336,9 +336,12 @@ export default function App() {
         const chunks  = [];
         for (let i = 0; i < data.length; i += CHUNK) chunks.push(data.slice(i, i + CHUNK));
         const total = chunks.length;
+        const groqKey = import.meta.env.VITE_GROQ_API_KEY;
         for (let i = 0; i < chunks.length; i++) {
           const content = [header, ...chunks[i]].join("\n");
-          const parsed = await callGemini(`${PARSE_PROMPT}\n\nConteúdo:\n${content}`, geminiKey, i + 1, total);
+          const parsed = groqKey
+            ? await callGroq(content, groqKey, i + 1, total)
+            : await callGemini(`${PARSE_PROMPT}\n\nConteúdo:\n${content}`, geminiKey, i + 1, total);
           rawTxs.push(...(parsed.transactions || []));
         }
       }
