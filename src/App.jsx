@@ -322,16 +322,22 @@ export default function App() {
       } else {
         // texto / planilha — divide em blocos de 150 linhas
         let lines;
+        const groqKey = import.meta.env.VITE_GROQ_API_KEY;
         if (["xlsx","xls"].includes(ext)) {
           setImportMsg("Convertendo planilha…");
           const ab = await toBuffer(file);
           const wb = XLSX.read(ab, { type:"array" });
-          lines = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]).split("\n");
+          if (groqKey) {
+            // Groq: mantém só as primeiras 22 colunas (A-V) para reduzir tamanho
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
+            lines = rows.map(row => row.slice(0, 22).map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+          } else {
+            lines = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]).split("\n");
+          }
         } else {
           lines = (await toText(file)).split("\n");
         }
-        const groqKey = import.meta.env.VITE_GROQ_API_KEY;
-        const CHUNK = groqKey ? 20 : 75;
+        const CHUNK = groqKey ? 25 : 75;
         const header  = lines[0];
         const data    = lines.slice(1).filter(l => l.trim());
         const chunks  = [];
