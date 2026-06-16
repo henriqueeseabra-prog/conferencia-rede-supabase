@@ -80,8 +80,9 @@ function calcForSave(rawTxs, config) {
     const unknown = !config[tx.type] || tx.type === "desconhecido";
     const key = unknown ? null : tx.type;
     const taxaNum  = key ? parseFloat(config[key].taxa) || 0 : 0;
+    const prazoSheet = (tx.prazo != null && !isNaN(Number(tx.prazo))) ? parseInt(tx.prazo) : null;
     const p = key ? parseInt(config[key].prazo) : NaN;
-    const prazoNum = isNaN(p) ? 1 : p;
+    const prazoNum = prazoSheet !== null ? prazoSheet : (isNaN(p) ? 1 : p);
     return {
       date: tx.date, description: tx.description || null,
       type: unknown ? "desconhecido" : tx.type,
@@ -101,7 +102,8 @@ const toText   = (f) => new Promise((res, rej) => { const r = new FileReader(); 
 
 const PARSE_PROMPT = `Extraia todas as transações financeiras do extrato abaixo.
 Tipos aceitos para o campo type: pix, visa_debito, visa_credito, mastercard_debito, mastercard_credito, elo_debito, elo_credito, elo_voucher, amex_credito, alelo, ticket, vr, pluxee, desconhecido.
-Regras: date no formato YYYY-MM-DD. gross_amount como número (negativo para estornos). Ignore linhas de cabeçalho e totais. Use "desconhecido" só se não conseguir identificar.`;
+Regras: date no formato YYYY-MM-DD. gross_amount como número (negativo para estornos). Ignore linhas de cabeçalho e totais. Use "desconhecido" só se não conseguir identificar.
+Se houver coluna de prazo de recebimento (ex: coluna S), extraia o número de dias no campo 'prazo'. Se o valor for texto como "Recebimento pela Bandeira", "pela bandeira" ou similar, omita o campo 'prazo'.`;
 
 const RESPONSE_SCHEMA = {
   type: "object",
@@ -117,6 +119,7 @@ const RESPONSE_SCHEMA = {
           gross_amount: { type: "number" },
           card_brand:   { type: "string" },
           nsu:          { type: "string" },
+          prazo:        { type: "number" },
         },
         required: ["date", "type", "gross_amount"],
       },
