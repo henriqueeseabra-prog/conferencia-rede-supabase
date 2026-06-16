@@ -605,11 +605,16 @@ export default function App() {
     return acc;
   }, {});
 
+  const pixReconKey = (tx, pi) => `pix__${tx.nsu || pi}`;
+
   const pendingRecon = pastDays.filter(d => {
     const items = grouped[d] || [];
     if (!items.length) return false;
-    const types = [...new Set(items.map(i => i.type))];
-    return types.some(t => { const v = recon[`${d}__${t}`]; return !v || v === ""; });
+    const pixItems  = items.filter(i => i.type === "pix");
+    const otherTypes = [...new Set(items.filter(i => i.type !== "pix").map(i => i.type))];
+    const otherPend = otherTypes.some(t => { const v = recon[`${d}__${t}`]; return !v || v === ""; });
+    const pixPend   = pixItems.some((tx, pi) => { const v = recon[`${d}__${pixReconKey(tx,pi)}`]; return !v || v === ""; });
+    return otherPend || pixPend;
   }).length;
 
   const TypeChip = ({ type, amount }) => {
@@ -1187,39 +1192,39 @@ export default function App() {
                               const items=grouped[day]||[];
                               if(!items.length) return null;
                               const isPast=day<today, isToday=day===today;
-                              const dayTypes=[...new Set(items.map(i=>i.type))];
                               const dayNet=items.reduce((a,i)=>a+i.net_amount,0);
-                              return dayTypes.map((type,ti)=>{
-                                const typeItems=items.filter(i=>i.type===type);
+                              const pixItems=items.filter(i=>i.type==="pix");
+                              const otherTypes=[...new Set(items.filter(i=>i.type!=="pix").map(i=>i.type))];
+                              const rowDefs=[
+                                ...otherTypes.map(type=>({ isPix:false, type, reconKey:`${day}__${type}`, typeItems:items.filter(i=>i.type===type) })),
+                                ...pixItems.map((tx,pi)=>({ isPix:true, tx, type:pixReconKey(tx,pi), reconKey:`${day}__${pixReconKey(tx,pi)}`, typeItems:[tx] })),
+                              ];
+                              return rowDefs.map(({isPix,type,reconKey,typeItems,tx},ri)=>{
                                 const expected=typeItems.reduce((a,i)=>a+i.net_amount,0);
-                                const reconKey=`${day}__${type}`;
                                 const rawVal=recon[reconKey];
                                 const actual=rawVal!==undefined&&rawVal!==""?parseFloat(rawVal)||0:null;
                                 const diff=actual!==null?actual-expected:null;
-                                const cfg=config[type]||{label:type,cor:"#94A3B8",bg:"#1A2840"};
+                                const cfg=config[isPix?"pix":type]||{label:type,cor:"#94A3B8",bg:"#1A2840"};
                                 let s={txt:"—",c:"#475569"};
                                 if(actual!==null){ if(Math.abs(diff)<0.02) s={txt:"✓ OK",c:"#10B981"}; else if(diff>0) s={txt:"↑ A mais",c:"#F59E0B"}; else s={txt:"↓ A menos",c:"#EF4444"}; }
                                 else if(isPast) s={txt:"⏳ Pendente",c:"#F59E0B"};
                                 else s={txt:"◷ Futuro",c:"#334155"};
-                                const isFirstOfDay=ti===0;
-                                const isLastOfDay=ti===dayTypes.length-1;
+                                const isFirstOfDay=ri===0;
+                                const isLastOfDay=ri===rowDefs.length-1;
                                 return (
                                   <tr key={reconKey} className="tr" style={{borderBottom:isLastOfDay?"2px solid #1A2840":"1px solid #0D1520"}}>
                                     <td style={{padding:"11px 12px",verticalAlign:"middle"}}>
                                       {isFirstOfDay&&(
                                         <div>
-                                          <span className="mono" style={{fontSize:13,fontWeight:600,color:isToday?"#10B981":isPast?"#9CA3AF":"#F1F5F9"}}>
-                                            {D(day)}
-                                          </span>
+                                          <span className="mono" style={{fontSize:13,fontWeight:600,color:isToday?"#10B981":isPast?"#9CA3AF":"#F1F5F9"}}>{D(day)}</span>
                                           {isToday&&<span style={{marginLeft:6,fontSize:9,background:"#10B981",color:"#001A0E",borderRadius:100,padding:"1px 6px",fontWeight:800}}>HOJE</span>}
-                                          {dayTypes.length>1&&(
-                                            <div style={{fontSize:10,color:"#334155",marginTop:2,fontFamily:"var(--mono)"}}>total {R(dayNet)}</div>
-                                          )}
+                                          {rowDefs.length>1&&<div style={{fontSize:10,color:"#334155",marginTop:2,fontFamily:"var(--mono)"}}>total {R(dayNet)}</div>}
                                         </div>
                                       )}
                                     </td>
                                     <td style={{padding:"11px 12px"}}>
                                       <span style={{background:cfg.bg,color:cfg.cor,borderRadius:100,padding:"2px 8px",fontSize:10,fontWeight:700,fontFamily:"var(--mono)",whiteSpace:"nowrap"}}>{cfg.label}</span>
+                                      {isPix&&tx?.nsu&&<div className="mono" style={{fontSize:9,color:"#334155",marginTop:2}}>NSU {tx.nsu}</div>}
                                     </td>
                                     <td style={{padding:"11px 12px"}}><span style={{fontSize:12,color:"#94A3B8"}}>{typeItems.length}</span></td>
                                     <td style={{padding:"11px 12px"}}><span className="mono" style={{fontSize:13,fontWeight:700,color:"#10B981"}}>{R(expected)}</span></td>
