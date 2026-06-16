@@ -114,7 +114,7 @@ function parseRedeSpreadsheet(rows) {
         nsu:         ["nsu/cv","nsu"],
         prazo:       ["prazo de recebimento","prazo"],
         nome:        ["nome do estabelecimento"],
-        taxa:        ["taxas descontadas","taxa mdr"],
+        taxa:        ["taxas descontadas"],
       };
       Object.entries(COLS).forEach(([key, names]) => {
         const idx = cells.findIndex(c => names.some(n => c.includes(n)));
