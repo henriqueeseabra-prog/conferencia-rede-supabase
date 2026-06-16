@@ -154,7 +154,7 @@ function parseRedeSpreadsheet(rows) {
     const r = rows[i];
     if (!r || r[colMap.date] === undefined || r[colMap.date] === "") continue;
     const status = String(r[colMap.status] ?? "").toLowerCase().trim();
-    if (status && status !== "aprovada") continue;
+    if (status && ["cancelada","cancelado","negada","negado","recusada","recusado"].some(s => status.includes(s))) continue;
 
     const date = toDate(r[colMap.date]);
     if (!date) continue;
