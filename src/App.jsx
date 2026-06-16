@@ -215,7 +215,7 @@ export default function App() {
     setTab("previsao");
   }
 
-  async function callGemini(text, geminiKey, idx, total) {
+  async function callGemini(text, geminiKey, idx, total, attempt = 0) {
     if (idx !== undefined) setImportMsg(`IA classificando bloco ${idx} de ${total}…`);
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
@@ -238,14 +238,14 @@ export default function App() {
         || data.error.status === "UNAVAILABLE"
         || data.error.code === 503
         || /high demand|temporarily unavailable|try again later/i.test(data.error.message || "");
-      if (retryable) {
+      if (retryable && attempt < 3) {
         const m = data.error.message?.match(/retry in ([\d.]+)s/i);
-        const wait = Math.ceil(parseFloat(m?.[1] ?? 30)) + 2;
+        const wait = Math.ceil(parseFloat(m?.[1] ?? 20)) + 2;
         for (let s = wait; s > 0; s--) {
-          setImportMsg(`IA sobrecarregada, aguardando ${s}s…`);
+          setImportMsg(`IA sobrecarregada, tentativa ${attempt + 1}/3 — aguardando ${s}s…`);
           await new Promise(r => setTimeout(r, 1000));
         }
-        return callGemini(text, geminiKey, idx, total);
+        return callGemini(text, geminiKey, idx, total, attempt + 1);
       }
       throw new Error(data.error.message);
     }
