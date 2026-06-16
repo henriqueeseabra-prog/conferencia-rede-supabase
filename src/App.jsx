@@ -330,13 +330,13 @@ export default function App() {
         } else {
           lines = (await toText(file)).split("\n");
         }
-        const CHUNK = 75;
+        const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+        const CHUNK = groqKey ? 40 : 75;
         const header  = lines[0];
         const data    = lines.slice(1).filter(l => l.trim());
         const chunks  = [];
         for (let i = 0; i < data.length; i += CHUNK) chunks.push(data.slice(i, i + CHUNK));
         const total = chunks.length;
-        const groqKey = import.meta.env.VITE_GROQ_API_KEY;
         for (let i = 0; i < chunks.length; i++) {
           const content = [header, ...chunks[i]].join("\n");
           const parsed = groqKey
