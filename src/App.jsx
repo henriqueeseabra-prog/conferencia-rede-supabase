@@ -124,7 +124,23 @@ function parseRedeSpreadsheet(rows) {
   }
   if (headerIdx === -1 || colMap.date === undefined) return null;
 
-  const toNum = s => parseFloat(String(s ?? "").replace(/R\$\s*/g,"").replace(/\s/g,"").replace(/\./g,"").replace(",",".")) || 0;
+  const toNum = s => {
+    if (typeof s === "number") return s;
+    return parseFloat(String(s ?? "").replace(/R\$\s*/g,"").replace(/\s/g,"").replace(/\./g,"").replace(",",".")) || 0;
+  };
+  const toDate = v => {
+    if (!v && v !== 0) return null;
+    if (v instanceof Date) return v.toISOString().split("T")[0];
+    const s = String(v).trim();
+    const dp = s.split("/");
+    if (dp.length === 3 && dp[2].length >= 4) return `${dp[2].slice(0,4)}-${dp[1].padStart(2,"0")}-${dp[0].padStart(2,"0")}`;
+    if (s.match(/^\d{4}-\d{2}-\d{2}/)) return s.slice(0,10);
+    if (!isNaN(Number(s)) && Number(s) > 1000) {
+      const d = new Date(Math.round((Number(s) - 25569) * 86400 * 1000));
+      return d.toISOString().split("T")[0];
+    }
+    return null;
+  };
 
   const BRAND = {
     visa:"visa", mastercard:"mastercard", master:"mastercard", elo:"elo",
@@ -135,13 +151,12 @@ function parseRedeSpreadsheet(rows) {
   const txs = [];
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i];
-    if (!r || !r[colMap.date]) continue;
+    if (!r || r[colMap.date] === undefined || r[colMap.date] === "") continue;
     const status = String(r[colMap.status] ?? "").toLowerCase().trim();
     if (status && status !== "aprovada") continue;
 
-    const dp = String(r[colMap.date]).split("/");
-    if (dp.length !== 3) continue;
-    const date = `${dp[2].slice(0,4)}-${dp[1]}-${dp[0]}`;
+    const date = toDate(r[colMap.date]);
+    if (!date) continue;
 
     const gross_amount = toNum(r[colMap.gross]);
     if (!gross_amount) continue;
@@ -412,7 +427,7 @@ export default function App() {
         if (["xlsx","xls"].includes(ext)) {
           setImportMsg("Lendo planilha…");
           const ab = await toBuffer(file);
-          const wb = XLSX.read(ab, { type:"array" });
+          const wb = XLSX.read(ab, { type:"array", cellDates: true });
           const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
           const directTxs = parseRedeSpreadsheet(rows);
           if (directTxs !== null) {
