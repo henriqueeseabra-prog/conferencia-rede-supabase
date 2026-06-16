@@ -215,6 +215,30 @@ export default function App() {
     setTab("previsao");
   }
 
+  async function callGroq(text, groqKey, idx, total) {
+    if (idx !== undefined) setImportMsg(`IA (Groq) classificando bloco ${idx} de ${total}…`);
+    const prompt = `${PARSE_PROMPT}\n\nRetorne um JSON com a estrutura: {"transactions": [{"date": "YYYY-MM-DD", "description": "...", "type": "...", "gross_amount": 0, "card_brand": "...", "nsu": "...", "prazo": 0}]}\n\nConteúdo:\n${text}`;
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: "Você é especialista em extrair dados financeiros de extratos. Responda APENAS com JSON válido." },
+          { role: "user", content: prompt },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0,
+        max_tokens: 32768,
+      }),
+    });
+    if (!res.ok) throw new Error(`Groq indisponível (${res.status})`);
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) throw new Error("Groq retornou resposta vazia");
+    return JSON.parse(content);
+  }
+
   async function callGemini(text, geminiKey, idx, total, attempt = 0) {
     if (idx !== undefined) setImportMsg(`IA classificando bloco ${idx} de ${total}…`);
     const res = await fetch(
@@ -232,15 +256,17 @@ export default function App() {
         }) }
     );
     if (res.status === 503 || res.status === 429) {
-      if (attempt < 3) {
+      if (attempt < 2) {
         const wait = res.status === 429 ? 62 : 20;
         for (let s = wait; s > 0; s--) {
-          setImportMsg(`IA sobrecarregada, tentativa ${attempt + 1}/3 — aguardando ${s}s…`);
+          setImportMsg(`IA sobrecarregada, tentativa ${attempt + 1}/2 — aguardando ${s}s…`);
           await new Promise(r => setTimeout(r, 1000));
         }
         return callGemini(text, geminiKey, idx, total, attempt + 1);
       }
-      throw new Error(`Gemini indisponível (${res.status}). Tente novamente em alguns minutos.`);
+      const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+      if (groqKey) return callGroq(text, groqKey, idx, total);
+      throw new Error(`Gemini indisponível. Tente novamente em alguns minutos.`);
     }
     const data = await res.json();
     if (data.error) {
@@ -248,14 +274,18 @@ export default function App() {
         || data.error.status === "RESOURCE_EXHAUSTED"
         || data.error.status === "UNAVAILABLE"
         || /high demand|temporarily unavailable|try again later/i.test(data.error.message || "");
-      if (retryable && attempt < 3) {
-        const m = data.error.message?.match(/retry in ([\d.]+)s/i);
-        const wait = Math.ceil(parseFloat(m?.[1] ?? 20)) + 2;
-        for (let s = wait; s > 0; s--) {
-          setImportMsg(`IA sobrecarregada, tentativa ${attempt + 1}/3 — aguardando ${s}s…`);
-          await new Promise(r => setTimeout(r, 1000));
+      if (retryable) {
+        if (attempt < 2) {
+          const m = data.error.message?.match(/retry in ([\d.]+)s/i);
+          const wait = Math.ceil(parseFloat(m?.[1] ?? 20)) + 2;
+          for (let s = wait; s > 0; s--) {
+            setImportMsg(`IA sobrecarregada, tentativa ${attempt + 1}/2 — aguardando ${s}s…`);
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          return callGemini(text, geminiKey, idx, total, attempt + 1);
         }
-        return callGemini(text, geminiKey, idx, total, attempt + 1);
+        const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+        if (groqKey) return callGroq(text, groqKey, idx, total);
       }
       throw new Error(data.error.message);
     }
