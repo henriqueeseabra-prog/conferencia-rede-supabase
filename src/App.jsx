@@ -251,6 +251,10 @@ export default function App() {
   const [panelCustomTo,   setPanelCustomTo]   = useState("");
   const [vendasCustomFrom, setVendasCustomFrom] = useState("");
   const [vendasCustomTo,   setVendasCustomTo]   = useState("");
+  const [panelDraftFrom,  setPanelDraftFrom]  = useState("");
+  const [panelDraftTo,    setPanelDraftTo]    = useState("");
+  const [vendasDraftFrom, setVendasDraftFrom] = useState("");
+  const [vendasDraftTo,   setVendasDraftTo]   = useState("");
   const fileRef     = useRef(null);
   const reconTimers = useRef({});
   const today = new Date().toISOString().split("T")[0];
@@ -547,7 +551,7 @@ export default function App() {
   const previsaoCutoff    = periodoPrevisao === "all" ? null : shiftDate(today, parseInt(periodoPrevisao));
   const filteredFuture    = previsaoCutoff ? futureDays.filter(d => d <= previsaoCutoff) : futureDays;
   const previsaoDays      = periodoPrevisao === "all" ? allDays : filteredFuture;
-  const conferenciaDays = [...futureDays, ...pastDays.slice(0, 90)];
+  const conferenciaDays = allDays.filter(d => d <= today).reverse();
 
   const totGross = settlements.reduce((a,s) => a + s.gross_amount, 0);
   const totNet   = settlements.reduce((a,s) => a + s.net_amount,   0);
@@ -744,11 +748,12 @@ export default function App() {
                   ))}
                   {periodoPanel==="custom"&&(
                     <div style={{display:"flex",gap:8,alignItems:"center",marginLeft:4}}>
-                      <input type="date" value={panelCustomFrom} onChange={e=>setPanelCustomFrom(e.target.value)}
+                      <input type="date" value={panelDraftFrom} onChange={e=>setPanelDraftFrom(e.target.value)}
                         className="inp" style={{padding:"5px 10px",fontSize:12,width:140}}/>
                       <span style={{color:"#475569",fontSize:12}}>até</span>
-                      <input type="date" value={panelCustomTo} onChange={e=>setPanelCustomTo(e.target.value)}
+                      <input type="date" value={panelDraftTo} onChange={e=>setPanelDraftTo(e.target.value)}
                         className="inp" style={{padding:"5px 10px",fontSize:12,width:140}}/>
+                      <button className="btn-g" style={{padding:"5px 14px",fontSize:12}} onClick={()=>{setPanelCustomFrom(panelDraftFrom);setPanelCustomTo(panelDraftTo);}}>OK</button>
                     </div>
                   )}
                 </div>
@@ -850,9 +855,10 @@ export default function App() {
                         ))}
                         {periodoVendas==="custom"&&(
                           <div style={{display:"flex",gap:8,alignItems:"center",marginLeft:4}}>
-                            <input type="date" value={vendasCustomFrom} onChange={e=>setVendasCustomFrom(e.target.value)} className="inp" style={{padding:"5px 10px",fontSize:12,width:140}}/>
+                            <input type="date" value={vendasDraftFrom} onChange={e=>setVendasDraftFrom(e.target.value)} className="inp" style={{padding:"5px 10px",fontSize:12,width:140}}/>
                             <span style={{color:"#475569",fontSize:12}}>até</span>
-                            <input type="date" value={vendasCustomTo} onChange={e=>setVendasCustomTo(e.target.value)} className="inp" style={{padding:"5px 10px",fontSize:12,width:140}}/>
+                            <input type="date" value={vendasDraftTo} onChange={e=>setVendasDraftTo(e.target.value)} className="inp" style={{padding:"5px 10px",fontSize:12,width:140}}/>
+                            <button className="btn-g" style={{padding:"5px 14px",fontSize:12}} onClick={()=>{setVendasCustomFrom(vendasDraftFrom);setVendasCustomTo(vendasDraftTo);}}>OK</button>
                           </div>
                         )}
                       </div>
