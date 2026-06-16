@@ -97,10 +97,32 @@ function calcForSave(rawTxs, config) {
 
 // ─── Parser direto para planilhas da Rede ─────────────────────────────────
 function parseRedeSpreadsheet(rows) {
-  const h = rows[0] || [];
-  const isRede = String(h[0] || "").toLowerCase().includes("data da venda")
-    && String(h[9] || "").toLowerCase().includes("bandeira");
-  if (!isRede) return null;
+  // Encontra a linha de cabeçalho dinamicamente
+  let headerIdx = -1;
+  let colMap = {};
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const cells = (rows[i] || []).map(c => String(c || "").toLowerCase().trim());
+    const joined = cells.join("|");
+    if (joined.includes("data da venda") && joined.includes("bandeira")) {
+      headerIdx = i;
+      const COLS = {
+        date:        ["data da venda"],
+        status:      ["status da venda"],
+        gross:       ["valor da venda original"],
+        modalidade:  ["modalidade"],
+        bandeira:    ["bandeira"],
+        nsu:         ["nsu/cv","nsu"],
+        prazo:       ["prazo de recebimento","prazo"],
+        nome:        ["nome do estabelecimento"],
+      };
+      Object.entries(COLS).forEach(([key, names]) => {
+        const idx = cells.findIndex(c => names.some(n => c.includes(n)));
+        if (idx !== -1) colMap[key] = idx;
+      });
+      break;
+    }
+  }
+  if (headerIdx === -1 || colMap.date === undefined) return null;
 
   const toNum = s => parseFloat(String(s ?? "").replace(/R\$\s*/g,"").replace(/\s/g,"").replace(/\./g,"").replace(",",".")) || 0;
 
@@ -111,22 +133,23 @@ function parseRedeSpreadsheet(rows) {
   };
 
   const txs = [];
-  for (let i = 1; i < rows.length; i++) {
+  for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i];
-    if (!r || !r[0]) continue;
-    if (String(r[2]||"").toLowerCase().trim() !== "aprovada") continue;
+    if (!r || !r[colMap.date]) continue;
+    const status = String(r[colMap.status] ?? "").toLowerCase().trim();
+    if (status && status !== "aprovada") continue;
 
-    const dp = String(r[0]).split("/");
+    const dp = String(r[colMap.date]).split("/");
     if (dp.length !== 3) continue;
     const date = `${dp[2].slice(0,4)}-${dp[1]}-${dp[0]}`;
 
-    const gross_amount = toNum(r[3]);
+    const gross_amount = toNum(r[colMap.gross]);
     if (!gross_amount) continue;
 
-    const mod = String(r[5]||"").toLowerCase().trim();
-    const brand = String(r[9]||"").toLowerCase().trim();
+    const mod   = String(r[colMap.modalidade] ?? "").toLowerCase().trim();
+    const brand = String(r[colMap.bandeira]   ?? "").toLowerCase().trim();
 
-    const prazoRaw = String(r[18]||"").trim();
+    const prazoRaw = String(r[colMap.prazo] ?? "").trim();
     const pm = prazoRaw.match(/\d+/);
     const prazo = pm ? parseInt(pm[0]) : null;
 
@@ -146,11 +169,11 @@ function parseRedeSpreadsheet(rows) {
 
     txs.push({
       date,
-      description: String(r[22]||"").trim() || null,
+      description: colMap.nome !== undefined ? String(r[colMap.nome] ?? "").trim() || null : null,
       type,
       gross_amount,
-      card_brand: String(r[9]||"").trim() || null,
-      nsu: String(r[17]||"").trim() || null,
+      card_brand: String(r[colMap.bandeira] ?? "").trim() || null,
+      nsu: colMap.nsu !== undefined ? String(r[colMap.nsu] ?? "").trim() || null : null,
       prazo,
     });
   }
