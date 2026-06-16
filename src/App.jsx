@@ -95,6 +95,68 @@ function calcForSave(rawTxs, config) {
   });
 }
 
+// ─── Parser direto para planilhas da Rede ─────────────────────────────────
+function parseRedeSpreadsheet(rows) {
+  const h = rows[0] || [];
+  const isRede = String(h[0] || "").toLowerCase().includes("data da venda")
+    && String(h[9] || "").toLowerCase().includes("bandeira");
+  if (!isRede) return null;
+
+  const toNum = s => parseFloat(String(s ?? "").replace(/R\$\s*/g,"").replace(/\s/g,"").replace(/\./g,"").replace(",",".")) || 0;
+
+  const BRAND = {
+    visa:"visa", mastercard:"mastercard", master:"mastercard", elo:"elo",
+    amex:"amex", "american express":"amex", alelo:"alelo", ticket:"ticket",
+    vr:"vr", pluxee:"pluxee", hipercard:"mastercard",
+  };
+
+  const txs = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || !r[0]) continue;
+    if (String(r[2]||"").toLowerCase().trim() !== "aprovada") continue;
+
+    const dp = String(r[0]).split("/");
+    if (dp.length !== 3) continue;
+    const date = `${dp[2].slice(0,4)}-${dp[1]}-${dp[0]}`;
+
+    const gross_amount = toNum(r[3]);
+    if (!gross_amount) continue;
+
+    const mod = String(r[5]||"").toLowerCase().trim();
+    const brand = String(r[9]||"").toLowerCase().trim();
+
+    const prazoRaw = String(r[18]||"").trim();
+    const pm = prazoRaw.match(/\d+/);
+    const prazo = pm ? parseInt(pm[0]) : null;
+
+    let type = "desconhecido";
+    if (mod === "pix" || brand === "pix") {
+      type = "pix";
+    } else {
+      const bk = Object.keys(BRAND).find(k => brand.includes(k));
+      if (bk) {
+        const b = BRAND[bk];
+        if (["alelo","ticket","vr","pluxee"].includes(b)) type = b;
+        else if (b === "amex") type = "amex_credito";
+        else if (b === "elo" && mod === "voucher") type = "elo_voucher";
+        else type = `${b}_${mod.includes("déb") || mod === "débito" ? "debito" : "credito"}`;
+      }
+    }
+
+    txs.push({
+      date,
+      description: String(r[22]||"").trim() || null,
+      type,
+      gross_amount,
+      card_brand: String(r[9]||"").trim() || null,
+      nsu: String(r[17]||"").trim() || null,
+      prazo,
+    });
+  }
+  return txs;
+}
+
 // ─── File readers ──────────────────────────────────────────────────────────
 const toBase64 = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = rej; r.readAsDataURL(f); });
 const toBuffer = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsArrayBuffer(f); });
@@ -320,35 +382,40 @@ export default function App() {
         catch { throw new Error("JSON inválido do PDF. Fim: …" + aiText.substring(aiText.length - 200)); }
 
       } else {
-        // texto / planilha — divide em blocos de 150 linhas
-        let lines;
         const groqKey = import.meta.env.VITE_GROQ_API_KEY;
+        let lines;
+        let directParsed = false;
+
         if (["xlsx","xls"].includes(ext)) {
-          setImportMsg("Convertendo planilha…");
+          setImportMsg("Lendo planilha…");
           const ab = await toBuffer(file);
           const wb = XLSX.read(ab, { type:"array" });
-          if (groqKey) {
-            // Groq: mantém só as primeiras 22 colunas (A-V) para reduzir tamanho
-            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
-            lines = rows.map(row => row.slice(0, 22).map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
+          const directTxs = parseRedeSpreadsheet(rows);
+          if (directTxs !== null) {
+            rawTxs = directTxs;
+            directParsed = true;
           } else {
-            lines = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]).split("\n");
+            lines = rows.map(row => row.slice(0,22).map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(","));
           }
         } else {
           lines = (await toText(file)).split("\n");
         }
-        const CHUNK = groqKey ? 25 : 75;
-        const header  = lines[0];
-        const data    = lines.slice(1).filter(l => l.trim());
-        const chunks  = [];
-        for (let i = 0; i < data.length; i += CHUNK) chunks.push(data.slice(i, i + CHUNK));
-        const total = chunks.length;
-        for (let i = 0; i < chunks.length; i++) {
-          const content = [header, ...chunks[i]].join("\n");
-          const parsed = groqKey
-            ? await callGroq(content, groqKey, i + 1, total)
-            : await callGemini(`${PARSE_PROMPT}\n\nConteúdo:\n${content}`, geminiKey, i + 1, total);
-          rawTxs.push(...(parsed.transactions || []));
+
+        if (!directParsed) {
+          const CHUNK = groqKey ? 25 : 75;
+          const header = lines[0];
+          const data   = lines.slice(1).filter(l => l.trim());
+          const chunks = [];
+          for (let i = 0; i < data.length; i += CHUNK) chunks.push(data.slice(i, i + CHUNK));
+          const total = chunks.length;
+          for (let i = 0; i < chunks.length; i++) {
+            const content = [header, ...chunks[i]].join("\n");
+            const parsed = groqKey
+              ? await callGroq(content, groqKey, i + 1, total)
+              : await callGemini(`${PARSE_PROMPT}\n\nConteúdo:\n${content}`, geminiKey, i + 1, total);
+            rawTxs.push(...(parsed.transactions || []));
+          }
         }
       }
 
