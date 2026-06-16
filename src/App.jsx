@@ -169,8 +169,12 @@ function parseRedeSpreadsheet(rows) {
     const pm = prazoRaw.match(/\d+/);
     const prazo = pm ? parseInt(pm[0]) : null;
 
-    const taxaRaw = colMap.taxa !== undefined ? String(r[colMap.taxa] ?? "").replace(/[%\s]/g,"").replace(",",".") : null;
-    const taxa_pct = taxaRaw && !isNaN(parseFloat(taxaRaw)) ? parseFloat(taxaRaw) : null;
+    const taxaRaw = colMap.taxa !== undefined ? r[colMap.taxa] : null;
+    let taxa_pct = null;
+    if (taxaRaw !== null && taxaRaw !== "" && taxaRaw !== undefined) {
+      const n = typeof taxaRaw === "number" ? taxaRaw : parseFloat(String(taxaRaw).replace(/[%\s]/g,"").replace(",","."));
+      if (!isNaN(n)) taxa_pct = n > 0 && n < 1 ? Math.round(n * 10000) / 100 : n;
+    }
 
     let type = "desconhecido";
     if (mod === "pix" || brand === "pix") {
