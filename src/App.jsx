@@ -177,7 +177,7 @@ function parseRedeSpreadsheet(rows) {
     }
 
     let type = "desconhecido";
-    if (mod === "pix" || brand === "pix") {
+    if (mod.includes("pix") || brand.includes("pix")) {
       type = "pix";
     } else {
       const bk = Object.keys(BRAND).find(k => brand.includes(k));
