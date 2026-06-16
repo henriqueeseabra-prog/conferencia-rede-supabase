@@ -231,12 +231,22 @@ export default function App() {
           },
         }) }
     );
+    if (res.status === 503 || res.status === 429) {
+      if (attempt < 3) {
+        const wait = res.status === 429 ? 62 : 20;
+        for (let s = wait; s > 0; s--) {
+          setImportMsg(`IA sobrecarregada, tentativa ${attempt + 1}/3 — aguardando ${s}s…`);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        return callGemini(text, geminiKey, idx, total, attempt + 1);
+      }
+      throw new Error(`Gemini indisponível (${res.status}). Tente novamente em alguns minutos.`);
+    }
     const data = await res.json();
     if (data.error) {
       const retryable = data.error.code === 429
         || data.error.status === "RESOURCE_EXHAUSTED"
         || data.error.status === "UNAVAILABLE"
-        || data.error.code === 503
         || /high demand|temporarily unavailable|try again later/i.test(data.error.message || "");
       if (retryable && attempt < 3) {
         const m = data.error.message?.match(/retry in ([\d.]+)s/i);
