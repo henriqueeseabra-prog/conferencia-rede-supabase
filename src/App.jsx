@@ -331,7 +331,7 @@ export default function App() {
           lines = (await toText(file)).split("\n");
         }
         const groqKey = import.meta.env.VITE_GROQ_API_KEY;
-        const CHUNK = groqKey ? 40 : 75;
+        const CHUNK = groqKey ? 20 : 75;
         const header  = lines[0];
         const data    = lines.slice(1).filter(l => l.trim());
         const chunks  = [];
