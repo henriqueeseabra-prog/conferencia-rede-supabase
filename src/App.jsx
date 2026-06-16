@@ -79,7 +79,7 @@ function calcForSave(rawTxs, config) {
   return rawTxs.map(tx => {
     const unknown = !config[tx.type] || tx.type === "desconhecido";
     const key = unknown ? null : tx.type;
-    const taxaNum  = key ? parseFloat(config[key].taxa) || 0 : 0;
+    const taxaNum  = tx.taxa_pct != null ? tx.taxa_pct : (key ? parseFloat(config[key].taxa) || 0 : 0);
     const prazoSheet = (tx.prazo != null && !isNaN(Number(tx.prazo))) ? parseInt(tx.prazo) : null;
     const p = key ? parseInt(config[key].prazo) : NaN;
     const prazoNum = prazoSheet !== null ? prazoSheet : (isNaN(p) ? 1 : p);
@@ -114,6 +114,7 @@ function parseRedeSpreadsheet(rows) {
         nsu:         ["nsu/cv","nsu"],
         prazo:       ["prazo de recebimento","prazo"],
         nome:        ["nome do estabelecimento"],
+        taxa:        ["taxas descontadas","taxa mdr"],
       };
       Object.entries(COLS).forEach(([key, names]) => {
         const idx = cells.findIndex(c => names.some(n => c.includes(n)));
@@ -168,6 +169,9 @@ function parseRedeSpreadsheet(rows) {
     const pm = prazoRaw.match(/\d+/);
     const prazo = pm ? parseInt(pm[0]) : null;
 
+    const taxaRaw = colMap.taxa !== undefined ? String(r[colMap.taxa] ?? "").replace(/[%\s]/g,"").replace(",",".") : null;
+    const taxa_pct = taxaRaw && !isNaN(parseFloat(taxaRaw)) ? parseFloat(taxaRaw) : null;
+
     let type = "desconhecido";
     if (mod === "pix" || brand === "pix") {
       type = "pix";
@@ -190,6 +194,7 @@ function parseRedeSpreadsheet(rows) {
       card_brand: String(r[colMap.bandeira] ?? "").trim() || null,
       nsu: colMap.nsu !== undefined ? String(r[colMap.nsu] ?? "").trim() || null : null,
       prazo,
+      taxa_pct,
     });
   }
   return txs;
